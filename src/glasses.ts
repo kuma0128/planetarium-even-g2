@@ -12,8 +12,10 @@ import {
   type EvenAppBridge,
 } from "@evenrealities/even_hub_sdk";
 import { LatestFrameQueue } from "./frame-queue.ts";
-import { pngBytes } from "./render.ts";
+import { MAP_HEIGHT, MAP_WIDTH, pngBytes } from "./render.ts";
 import { validLocation, type Location } from "./sky.ts";
+
+const TILE_WIDTH = MAP_WIDTH / 2;
 
 export type GlassesFrame = {
   header: string;
@@ -78,7 +80,7 @@ export class GlassesDisplay {
               containerName: "sky-header",
               xPosition: 0,
               yPosition: 0,
-              width: 576,
+              width: MAP_WIDTH,
               height: 48,
               content: "G2 Planetarium",
               isEventCapture: 1,
@@ -88,7 +90,7 @@ export class GlassesDisplay {
               containerName: "sky-footer",
               xPosition: 0,
               yPosition: 202,
-              width: 576,
+              width: MAP_WIDTH,
               height: 86,
               content: "Set your location and heading",
               isEventCapture: 0,
@@ -100,16 +102,16 @@ export class GlassesDisplay {
               containerName: "sky-left",
               xPosition: 0,
               yPosition: 54,
-              width: 288,
-              height: 144,
+              width: TILE_WIDTH,
+              height: MAP_HEIGHT,
             }),
             new ImageContainerProperty({
               containerID: 4,
               containerName: "sky-right",
-              xPosition: 288,
+              xPosition: TILE_WIDTH,
               yPosition: 54,
-              width: 288,
-              height: 144,
+              width: TILE_WIDTH,
+              height: MAP_HEIGHT,
             }),
           ],
         }),
@@ -184,8 +186,8 @@ export class GlassesDisplay {
     if (!this.active) return;
     // Snapshot before queueing; the preview canvas is reused by the next compass update.
     const image = document.createElement("canvas");
-    image.width = 576;
-    image.height = 144;
+    image.width = MAP_WIDTH;
+    image.height = MAP_HEIGHT;
     image.getContext("2d")!.drawImage(frame.image, 0, 0);
     this.queue?.submit({ ...frame, image });
   }
@@ -202,13 +204,23 @@ export class GlassesDisplay {
       if (!ok) throw new Error("Could not send the display captions.");
     }
     const tile = document.createElement("canvas");
-    tile.width = 288;
-    tile.height = 144;
+    tile.width = TILE_WIDTH;
+    tile.height = MAP_HEIGHT;
     for (let i = 0; i < 2; i++) {
       if (!this.active || generation !== this.generation) return;
       tile
         .getContext("2d")!
-        .drawImage(frame.image, i * 288, 0, 288, 144, 0, 0, 288, 144);
+        .drawImage(
+          frame.image,
+          i * TILE_WIDTH,
+          0,
+          TILE_WIDTH,
+          MAP_HEIGHT,
+          0,
+          0,
+          TILE_WIDTH,
+          MAP_HEIGHT,
+        );
       const result = await bridge.updateImageRawData(
         new ImageRawDataUpdate({
           containerID: 3 + i,

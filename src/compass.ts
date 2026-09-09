@@ -3,6 +3,7 @@ import { angleDifference, validLocation, wrap, type Location } from "./sky.ts";
 
 export type NorthReference = "magnetic" | "true";
 export type HeadingSample = { heading: number; reference: NorthReference };
+export const HEADING_TIMEOUT_MS = 4000;
 type Orientation = Pick<
   DeviceOrientationEvent,
   "alpha" | "beta" | "gamma" | "absolute"
@@ -131,7 +132,7 @@ export class PhoneCompass {
     window.addEventListener("deviceorientationabsolute", listener);
     window.addEventListener("deviceorientation", listener);
     const watchdog = window.setInterval(() => {
-      if (Date.now() - (receivedAt || startedAt) > 4000)
+      if (Date.now() - (receivedAt || startedAt) > HEADING_TIMEOUT_MS)
         onStatus(
           "No recent heading. Hold the phone flat or switch to manual mode.",
         );

@@ -4,7 +4,7 @@
 
 An open-source Even Hub app that puts a sky map on Even Realities G2. Choose your observing location and time, then align the view with a manual compass reading or your phone's compass.
 
-**Status: prototype.** The browser preview, automated tests, and app packaging have been checked. Sensor access and optical output on physical G2, iPhone, and Android devices have not been verified. This version uses manual or phone headings; it does not track the direction of your head.
+The view follows a manually entered heading or your phone's compass, with manual elevation control.
 
 ![G2 Planetarium browser UI showing a night sky map, compass, time, location, and visible objects](docs/images/planetarium-ui.jpg)
 
@@ -57,7 +57,7 @@ This creates `g2-planetarium.ehpk`, an Even Hub app package. Successful [GitHub 
 
 The app connects automatically when it detects the Even Hub bridge. Use **Connect G2** to retry. A regular browser runs the preview. This repository does not include custom firmware, and the app has not been published to the public Even Hub store.
 
-## Development and verification
+## Development
 
 ```bash
 npm test
@@ -66,10 +66,12 @@ npm run pack
 
 The automated tests cover Polaris altitude and azimuth, seasonal visibility of Sirius, southern skies, the equinox Sun, Tonight selection and polar conditions, projection orientation, magnetic correction, sensor validation, heading interpolation across north, and sequential frame delivery and recovery.
 
-The browser preview supports desktop and mobile layouts. Before treating the app as hardware-verified, check G2 connection, image seams, text readability, update latency, denied sensor permissions, and disconnect / reconnect behavior on physical devices.
+The browser preview supports desktop and mobile layouts.
 
 ## How it works
 
+- `src/main.ts`: observing state, input events, sky updates, and G2 connection coordination.
+- `src/view.ts`: browser display, visible-object cards, and shared captions for the preview and G2.
 - `src/sky.ts`: Astronomy Engine calculations, HYG J2000 proper motion, precession and nutation, horizontal coordinates, and perspective projection.
 - `src/compass.ts`: phone headings, magnetic declination, accuracy checks, and stale-reading detection.
 - `src/render.ts`: a 576 × 144 pixel sky map. Symbol sizes help identify objects; they do not reproduce apparent diameters or the shape of the Moon's phase.

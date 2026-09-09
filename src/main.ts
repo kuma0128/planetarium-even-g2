@@ -1,8 +1,6 @@
 import "./style.css";
 import {
   calculateSky,
-  direction,
-  skyBrightness,
   tonight,
   validLocation,
   wrap,
@@ -10,6 +8,7 @@ import {
   type Sky,
 } from "./sky.ts";
 import {
+  HEADING_TIMEOUT_MS,
   magneticDeclination,
   PhoneCompass,
   smoothHeading,
@@ -17,16 +16,9 @@ import {
   type NorthReference,
 } from "./compass.ts";
 import { GlassesDisplay } from "./glasses.ts";
-import { renderSky } from "./render.ts";
+import { element, input, pressed, text } from "./dom.ts";
+import { renderView, type TimeMode } from "./view.ts";
 
-const element = <T extends HTMLElement = HTMLElement>(id: string) =>
-  document.getElementById(id)! as T;
-const input = (id: string) => element<HTMLInputElement>(id);
-const text = (id: string, value: string) => {
-  element(id).textContent = value;
-};
-const pressed = (id: string, value: boolean) =>
-  element(id).setAttribute("aria-pressed", String(value));
 const canvas = element<HTMLCanvasElement>("sky");
 const sampleLocation: Location = {
   latitude: 35.6812,
@@ -34,7 +26,7 @@ const sampleLocation: Location = {
   height: 0,
 };
 let location: Location | null = null;
-let timeMode: "now" | "tonight" | "custom" = "now";
+let timeMode: TimeMode = "now";
 let selectedTime = new Date();
 let rawHeading = 180;
 let phoneMode = false;
@@ -65,7 +57,7 @@ function localInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
-function setTimeMode(mode: typeof timeMode): void {
+function setTimeMode(mode: TimeMode): void {
   timeMode = mode;
   if (mode === "now") {
     selectedTime = new Date();
@@ -151,93 +143,20 @@ function render(): void {
     magnitude: Number(input("magnitude").value),
     lines: input("lines").checked,
   };
-  const visible = renderSky(canvas, sky, options);
-  const targets = visible
-    .filter((o) => o.name && o.kind !== "sun")
-    .sort((a, b) => a.magnitude - b.magnitude)
-    .slice(0, 8);
-  const modeLabel =
-    timeMode === "now"
-      ? "Now"
-      : timeMode === "tonight"
-        ? "Tonight"
-        : "Custom";
   const source = phoneMode
-    ? Date.now() - phoneReceivedAt <= 4000
+    ? Date.now() - phoneReceivedAt <= HEADING_TIMEOUT_MS
       ? "Phone"
       : "Phone: waiting"
     : "Manual";
-  const headingLabel =
-    heading == null
-      ? "Check north reference"
-      : `${direction(heading)} ${Math.round(heading) % 360}°`;
-  const timeLabel = selectedTime.toLocaleString("en-GB", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
+  const { header, footer } = renderView(canvas, sky, options, {
+    time: selectedTime,
+    timeMode,
+    location,
+    rawHeading,
+    heading,
+    headingSource: source,
+    declination,
   });
-  const header = `${modeLabel} ${timeLabel}\n${location ? "" : "Tokyo demo / "}${headingLabel}  Alt ${pitch}°  ${source}`;
-  const footer = `${skyBrightness(sky.sunAltitude)}\n${
-    targets
-      .slice(0, 2)
-      .map((o) => `${o.name} ${Math.round(o.altitude)}°`)
-      .join(" / ") || "Try a different heading or elevation"
-  }\nMoon illuminated: ${Math.round(sky.moonFraction * 100)}%`;
-  text("lens-header", header);
-  text("lens-footer", footer);
-  text("sky-period", modeLabel);
-  text("direction-name", heading == null ? "Set north" : direction(heading));
-  text(
-    "heading-readout",
-    heading == null ? "—" : String(Math.round(heading) % 360),
-  );
-  text("heading-source", source);
-  text("heading-value", `${Math.round(rawHeading) % 360}°`);
-  text("pitch-value", `${pitch}°`);
-  // No CSS transition across 359°→0°: the diagram follows the actual shortest path.
-  element("compass-needle").style.transition = "none";
-  element("compass-needle").style.transform =
-    `rotate(${heading ?? rawHeading}deg)`;
-  text(
-    "declination-label",
-    declination == null
-      ? "Magnetic correction is unavailable here at the current date. Use a true-north compass and select True north."
-      : `Current declination: ${declination.toFixed(1)}°. Added to magnetic headings to align with true north. Select True north if your compass already applies this correction.`,
-  );
-  text(
-    "location-label",
-    location
-      ? `${location.latitude.toFixed(4)}°, ${location.longitude.toFixed(4)}°`
-      : "Tokyo demo · Location not set",
-  );
-  text("light-label", skyBrightness(sky.sunAltitude));
-  text("object-count", `${visible.length} objects · Brightest named objects below`);
-  const list = element("objects");
-  list.replaceChildren();
-  for (const object of targets) {
-    const card = document.createElement("div");
-    card.className = "object";
-    const dot = document.createElement("span");
-    dot.className = "object-dot";
-    const description = document.createElement("div");
-    const title = document.createElement("strong");
-    title.textContent = object.name;
-    const detail = document.createElement("p");
-    detail.textContent = `${direction(object.azimuth)} ${object.azimuth.toFixed(0)}° · Alt ${object.altitude.toFixed(0)}° · ${object.kind === "star" ? `mag ${object.magnitude.toFixed(1)}` : object.kind === "moon" ? "Moon" : "Planet"}`;
-    description.append(title, detail);
-    card.append(dot, description);
-    list.append(card);
-  }
-  if (!targets.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent =
-      "No bright named objects in this view. Change the heading or elevation to explore.";
-    list.append(empty);
-  }
   const frameKey = JSON.stringify([
     skyKey,
     Math.round(options.heading),
