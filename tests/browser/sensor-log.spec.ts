@@ -23,7 +23,9 @@ test("Sensor log contains real-session samples and capture markers, with no loca
     "forward",
     "up",
   ]);
-  expect(report.config.format).toBe("gravity");
+  expect(report.config).toEqual({ format: "gravity" });
+  expect(report.reference).toEqual({ heading: 180, pitch: 30, northReference: "true" });
+  expect(report.lastPose).not.toHaveProperty("heading");
   expect(report).not.toHaveProperty("location");
   expect(JSON.stringify(report)).not.toContain("latitude");
 });

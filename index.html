@@ -123,12 +123,9 @@
               ><span class="muted">Relative to true north</span>
             </div>
           </div>
-          <div class="segmented" aria-label="Heading input method">
-            <button id="manual-mode" aria-pressed="true">Manual</button
-            ><button id="phone-mode" aria-pressed="false">Phone compass</button>
-          </div>
           <p id="compass-status" class="helper" role="status">
-            Match the heading shown on your compass.
+            Face a known direction and match the heading below. Use your phone's
+            Compass app or a landmark to align it.
           </p>
           <label class="range-label" for="heading"
             >Compass heading <output id="heading-value">180°</output></label
@@ -178,8 +175,8 @@
             </div>
           </details>
           <p class="caption">
-            For phone compass mode, hold your phone flat and point its top edge
-            toward the sky you want to view.
+            G2 follows up and down only. Face the selected direction, then set
+            your reference under G2 head tilt below.
           </p>
         </section>
         <section class="time-panel panel" aria-labelledby="time-title">
@@ -244,13 +241,14 @@
           <div class="head-main">
             <div class="section-title">
               <h2 id="head-title">
-                Head tracking <span class="small-tag">EXPERIMENTAL</span>
+                G2 head tilt <span class="small-tag">UP / DOWN</span>
               </h2>
               <span id="head-state" class="small-tag">Off</span>
             </div>
             <p class="helper">
-              Follow your head's elevation using the G2 sensor. Calibrate while
-              wearing the glasses; keep using your compass for direction.
+              Choose your heading and elevation above, face that direction,
+              and set it as your reference. The G2 sensor follows your head's
+              elevation after two-pose calibration.
             </p>
             <p id="head-scope" class="helper"></p>
             <div class="head-actions">
@@ -263,68 +261,32 @@
               Start the G2 sensor, then calibrate while wearing your glasses.
             </p>
             <div class="head-steps">
-              <button id="head-forward" class="button" disabled>
-                1. Capture forward pose
+              <button id="align-direction" class="button subtle" disabled>
+                1. Use this direction as reference
               </button>
               <button id="head-up" class="button" disabled>
                 2. Capture upward tilt
               </button>
-              <button id="head-right" class="button" disabled hidden>
-                3. Capture right turn
-              </button>
             </div>
+            <p id="head-reference" class="helper" role="status"></p>
+            <button id="head-realign" class="button full" disabled>
+              Align another direction
+            </button>
             <p class="caption">
-              First match the heading and elevation above to your forward view.
+              Hold still for about one second before setting the reference.
               Then look 20–40° higher, without tilting sideways, and capture
-              again. You can also tap the glasses or ring to capture each pose.
-              The sky map follows your elevation; its scale is enlarged.
+              the upward tilt to start tracking. You can also tap the glasses
+              or ring for each step. To face another direction, select Align
+              another direction and repeat. The sky map's scale is enlarged.
             </p>
           </div>
           <details id="head-diagnostics">
-            <summary>Sensor details &amp; experimental yaw</summary>
+            <summary>Sensor details &amp; log</summary>
             <p class="helper">
-              The public SDK does not define the meaning or units of its axes.
-              The default assumes gravity readings. Select rotation angles only
-              after confirming the actual sensor output; a right-turn check is
-              required before yaw can follow.
+              Two steady poses calibrate gravity-based elevation. Readings
+              with large acceleration changes are ignored. Real-device accuracy
+              and display latency still need verification.
             </p>
-            <div class="settings-fields">
-              <label
-                >Sensor format<select id="head-format">
-                  <option value="gravity">Gravity vector — tilt only</option>
-                  <option value="degrees">Rotation angles — degrees</option>
-                  <option value="radians">Rotation angles — radians</option>
-                </select></label
-              >
-              <div id="head-angle-settings" class="head-axis-grid" hidden>
-                <label
-                  >Pitch axis<select id="head-pitch-axis">
-                    <option>x</option>
-                    <option>y</option>
-                    <option>z</option>
-                  </select></label
-                >
-                <label
-                  >Upward direction<select id="head-pitch-sign">
-                    <option value="1">Increasing</option>
-                    <option value="-1">Decreasing</option>
-                  </select></label
-                >
-                <label
-                  >Yaw axis<select id="head-yaw-axis">
-                    <option>x</option>
-                    <option>y</option>
-                    <option selected>z</option>
-                  </select></label
-                >
-                <label
-                  >Right-turn direction<select id="head-yaw-sign">
-                    <option value="1">Increasing</option>
-                    <option value="-1">Decreasing</option>
-                  </select></label
-                >
-              </div>
-            </div>
             <p id="head-raw" class="head-raw">x — y — z —</p>
             <div class="head-metrics">
               <span id="head-sample-rate">0.0 samples/s</span

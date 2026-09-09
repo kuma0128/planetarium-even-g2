@@ -6,13 +6,13 @@ test("A sensor acknowledgement without readings cannot enable calibration and ca
   await page.goto("/");
   await page.locator("#head-start").click();
   await expect(page.locator("#head-state")).toHaveText("Waiting for sensor");
-  await expect(page.locator("#head-forward")).toBeDisabled();
+  await expect(page.locator("#align-direction")).toBeDisabled();
   await expect(page.locator("#head-status")).toContainText("No G2 sensor readings received");
   await expect(page.locator("#head-scope")).toContainText("Up / down only");
   await page.locator("#head-stop").click();
   await page.locator("#head-start").click();
   await hold(page, gravity(30));
-  await expect(page.locator("#head-forward")).toBeEnabled();
+  await expect(page.locator("#align-direction")).toBeEnabled();
   await expect(page.locator("#head-status")).not.toContainText("No G2 sensor readings");
 });
 
@@ -130,7 +130,7 @@ test("Stale sensor readings freeze the map and require calibration before resumi
   await hold(page, gravity(0));
   await expect(page.locator("#pitch-value")).toHaveText("60°");
   await expect(page.locator("#head-state")).not.toHaveText("Tracking");
-  await page.locator("#head-forward").click();
+  await page.locator("#align-direction").click();
   await expect(page.locator("#head-up")).toBeEnabled();
   await expect(page.locator("#pitch-value")).toHaveText("60°");
 });
@@ -142,12 +142,12 @@ test("A failed forward capture after a pause stays readable until calibration is
   await calibrateTilt(page);
   await expect(page.locator("#heading-source")).toHaveText("Head paused", { timeout: 4000 });
   await page.evaluate(sample => window.__g2Test.emit(sample), gravity(30));
-  await page.locator("#head-forward").click();
+  await page.locator("#align-direction").click();
   await expect(page.locator("#head-status")).toContainText("Wait for at least four fresh readings");
   await hold(page, gravity(30));
   await expect(page.locator("#head-status")).toContainText("Wait for at least four fresh readings");
   await expect(page.locator("#lens-footer")).toContainText("Pose not captured");
-  await page.locator("#head-forward").click();
+  await page.locator("#align-direction").click();
   await expect(page.locator("#head-up")).toBeEnabled();
   await expect(page.locator("#head-status")).toContainText("Look 20–40° higher");
 });
@@ -161,38 +161,52 @@ test("A paused elevation outside the calibration range explains how to recover w
   await expect(page.locator("#pitch-value")).toHaveText("75°");
   await expect(page.locator("#heading-source")).toHaveText("Head paused", { timeout: 4000 });
   await hold(page, gravity(30));
-  await page.locator("#head-forward").click();
-  await expect(page.locator("#head-status")).toContainText("Select Stop");
+  await page.locator("#align-direction").click();
+  await expect(page.locator("#head-status")).toContainText("Align another direction or Stop");
   await expect(page.locator("#head-status")).toContainText("between −60° and 60°");
   await page.locator("#head-stop").click();
   await range(page, "#pitch", "30");
   await calibrateTilt(page);
 });
 
-test("Experimental yaw remains disabled until the right-turn check, then manual mode releases it", async ({
-  page,
-}) => {
+test("The direction-reference button starts tilt from the chosen elevation and can realign without reconnecting", async ({ page }) => {
   await host(page);
   await page.goto("/");
   await reference(page, "0");
-  await page.locator("#head-diagnostics summary").click();
-  await page.selectOption("#head-format", "degrees");
   await range(page, "#heading", "90");
+  await expect(page.locator("#align-direction")).toBeDisabled();
   await page.locator("#head-start").click();
-  await hold(page, { x: 10, y: 0, z: 350 });
-  await page.locator("#head-forward").click();
-  await hold(page, { x: 40, y: 0, z: 350 });
+  await hold(page, gravity(20));
+  await page.getByRole("button", { name: "1. Use this direction as reference" }).click();
+  await expect(page.locator("#head-reference")).toContainText("90° true north · elevation 0°");
+  await expect(page.locator("#head-state")).not.toHaveText("Tracking");
+  await expect(page.locator("#pitch-value")).toHaveText("0°");
+  await hold(page, gravity(50));
   await page.locator("#head-up").click();
-  await expect(page.locator("#head-right")).toBeEnabled();
+  await expect(page.locator("#head-state")).toHaveText("Tracking");
+  await expect(page.locator("#pitch-value")).toHaveText("30°");
+  await hold(page, gravity(10));
+  await expect(page.locator("#pitch-value")).toHaveText("-10°");
   await expect(page.locator("#heading-readout")).toHaveText("90");
-  await hold(page, { x: 10, y: 0, z: 20 });
-  await page.locator("#head-right").click();
-  await expect(page.locator("#heading-readout")).toHaveText("120");
-  await expect(page.locator("#phone-mode")).toBeDisabled();
-  await page.locator("#manual-mode").click();
-  await expect(page.locator("#head-state")).toHaveText("Off");
-  await expect(page.locator("#heading")).toBeEnabled();
-  await expect(page.locator("#heading-readout")).toHaveText("120");
+
+  await page.getByRole("button", { name: "Align another direction" }).click();
+  await expect(page.locator("#head-reference")).toContainText("No reference set");
+  await expect(page.locator("#pitch-value")).toHaveText("-10°");
+  await range(page, "#heading", "270");
+  await range(page, "#pitch", "10");
+  await hold(page, gravity(25));
+  await page.locator("#align-direction").click();
+  await expect(page.locator("#head-reference")).toContainText("270° true north · elevation 10°");
+  await hold(page, gravity(55));
+  await page.locator("#head-up").click();
+  await expect(page.locator("#pitch-value")).toHaveText("40°");
+  await hold(page, gravity(15));
+  await expect(page.locator("#pitch-value")).toHaveText("0°");
+  await expect(page.locator("#heading-readout")).toHaveText("270");
+  await expectDeliveredFrame(page);
+  expect(await page.evaluate(() => window.__g2Test.calls.filter(
+    call => call.method === "imuControl" && call.data?.iMUReportEn === 1,
+  ).length)).toBe(1);
 });
 
 test("A rejected sensor start is visible and retry works", async ({ page }) => {
@@ -209,7 +223,7 @@ test("A rejected sensor start is visible and retry works", async ({ page }) => {
   });
   await page.locator("#head-start").click();
   await hold(page, gravity(30));
-  await expect(page.locator("#head-forward")).toBeEnabled();
+  await expect(page.locator("#align-direction")).toBeEnabled();
 });
 
 test("A calibration error remains readable while further sensor samples arrive", async ({
@@ -220,7 +234,7 @@ test("A calibration error remains readable while further sensor samples arrive",
   await reference(page);
   await page.locator("#head-start").click();
   await hold(page, gravity(30));
-  await page.locator("#head-forward").click();
+  await page.locator("#align-direction").click();
   await hold(page, gravity(30));
   await page.locator("#head-up").click();
   await expect(page.locator("#head-status")).toContainText("try again");

@@ -159,7 +159,7 @@ test("Disconnect stops tracking and reconnect requires a new calibration", async
   await expect(page.locator("#bridge-status")).toContainText("disconnected");
   await page.locator("#head-start").click();
   await hold(page, gravity(30));
-  await expect(page.locator("#head-forward")).toBeEnabled();
+  await expect(page.locator("#align-direction")).toBeEnabled();
   await expect(page.locator("#head-up")).toBeDisabled();
 });
 

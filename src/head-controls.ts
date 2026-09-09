@@ -1,14 +1,15 @@
-import { element, input, text } from "./dom.ts";
+import { element, text } from "./dom.ts";
 import {
   HeadTracker,
   MOTION_TIMEOUT_MS,
   readMotionSample,
-  type Axis,
-  type MotionConfig,
   type TimedMotionSample,
 } from "./head-tracking.ts";
 import type { GlassesDisplay } from "./glasses.ts";
-import { dependencies } from "../package.json";
+import type { NorthReference } from "./compass.ts";
+import { dependencies, version } from "../package.json";
+
+type HeadReference = { heading: number; pitch: number; northReference: NorthReference };
 
 /** The live sensor session and calibration UI. No simulated input enters this path. */
 export class HeadControls {
@@ -30,34 +31,27 @@ export class HeadControls {
   private exporting = false;
   private receivedCount = 0;
   private rejectedCount = 0;
+  private referencePose: HeadReference | null = null;
   private status =
     "Start the G2 sensor, then calibrate while wearing your glasses.";
   constructor(
     private glasses: GlassesDisplay,
-    private reference: () => { heading: number; pitch: number },
+    private reference: () => HeadReference,
     private changed: () => void,
     private beforeReset: () => void,
-    private angleMode: () => void,
   ) {
     element("head-start").onclick = () => void this.start();
     element("head-stop").onclick = () => void this.stop();
-    element("head-forward").onclick = () =>
+    element("align-direction").onclick = () =>
       this.capture("forward", () => {
         this.beforeReset();
-        this.tracker.captureForward(this.reference(), performance.now());
+        const reference = this.reference();
+        this.tracker.captureForward(reference.pitch, performance.now());
+        this.referencePose = reference;
       });
     element("head-up").onclick = () =>
       this.capture("up", () => this.tracker.captureUp(performance.now()));
-    element("head-right").onclick = () =>
-      this.capture("right", () => this.tracker.captureRight(performance.now()));
-    for (const id of [
-      "head-format",
-      "head-pitch-axis",
-      "head-yaw-axis",
-      "head-pitch-sign",
-      "head-yaw-sign",
-    ])
-      element(id).onchange = () => this.recalibrate();
+    element("head-realign").onclick = () => this.recalibrate();
     element("head-download").onclick = () => void this.download();
     element("head-copy").onclick = () => void this.copyLog();
     this.refresh(performance.now(), true);
@@ -68,9 +62,6 @@ export class HeadControls {
   get active() {
     return this.enabled && this.tracker.phase === "tracking";
   }
-  get controlsYaw() {
-    return this.enabled && this.tracker.config.format !== "gravity";
-  }
   get glassesHint(): string | undefined {
     if (!this.enabled || this.active) return;
     if (performance.now() - this.tracker.lastSampleAt > MOTION_TIMEOUT_MS)
@@ -79,9 +70,7 @@ export class HeadControls {
       return "Pose not captured\nHold still and try the tap again.\nCheck the phone for calibration details.";
     if (this.tracker.phase === "up")
       return "Head setup: look up 20–40°\nKeep your head level sideways.\nHold still; tap to capture.";
-    if (this.tracker.phase === "right")
-      return "Head setup: turn right 20–40°\nUse your starting elevation.\nHold still; tap to capture.";
-    return "Head setup: forward pose\nMatch the set heading and elevation.\nHold still; tap to capture.";
+    return "Set your direction reference\nFace the selected heading and elevation.\nHold still; tap to set the reference.";
   }
 
   captureNext(): void {
@@ -89,9 +78,7 @@ export class HeadControls {
     const id =
       this.tracker.phase === "up"
         ? "head-up"
-        : this.tracker.phase === "right"
-          ? "head-right"
-          : "head-forward";
+        : "align-direction";
     element<HTMLButtonElement>(id).click();
   }
 
@@ -130,9 +117,8 @@ export class HeadControls {
     try {
       await this.glasses.connect();
       if (generation !== this.generation) return;
-      this.tracker.reset(this.config());
-      if (this.tracker.config.format !== "gravity")
-        this.angleMode();
+      this.tracker.reset();
+      this.referencePose = null;
       this.samples = [];
       this.receivedCount = this.rejectedCount = 0;
       this.captures = [];
@@ -143,7 +129,7 @@ export class HeadControls {
       await this.glasses.setMotionEnabled(true);
       if (generation !== this.generation) return;
       this.status = this.samples.length ? this.tracker.message
-        : "Sensor requested. Waiting for G2 readings; then hold still and capture the forward pose. Tracking starts after both poses are captured.";
+        : "Waiting for G2 readings. Face the selected heading and elevation, then select Use this direction as reference. Tracking starts after the upward tilt is also captured.";
     } catch (error) {
       if (generation !== this.generation) return;
       this.enabled = false;
@@ -178,18 +164,20 @@ export class HeadControls {
     this.generation++;
     this.enabled = this.busy = false;
     this.captureFailed = false;
-    this.tracker.reset(this.config());
+    this.tracker.reset();
+    this.referencePose = null;
     this.status = message;
     this.refresh(performance.now(), true);
     this.changed();
   }
 
   recalibrate(): void {
+    if (!this.enabled || this.busy) return;
     this.beforeReset();
-    this.tracker.reset(this.config());
+    this.tracker.reset();
+    this.referencePose = null;
     this.captureFailed = false;
-    if (this.controlsYaw) this.angleMode();
-    this.status = this.tracker.message;
+    this.status = "Face your new direction. Set the heading and elevation above, then use this direction as reference.";
     this.refresh(performance.now(), true);
     this.changed();
   }
@@ -218,22 +206,20 @@ export class HeadControls {
     const fresh = now - this.tracker.lastSampleAt <= MOTION_TIMEOUT_MS;
     text("head-state", this.active ? "Tracking" : !this.enabled ? "Off"
       : !fresh ? "Waiting for sensor" : "Calibrating / paused");
-    text("head-scope", this.tracker.config.format === "gravity"
-      ? "Up / down only. Turning your head left or right does not change direction; use Manual or Phone compass, or swipe to turn 15°."
-      : "Experimental up / down + left / right. Requires verified rotation-angle readings and all three calibration poses.");
+    text("head-scope", "Up / down only. Set the heading manually; swipe to adjust it by 15°. After facing another direction, align the reference again.");
+    text("head-reference", this.referencePose
+      ? `${this.tracker.phase === "neutral" ? "Previous reference (paused)" : "Calibration reference"}: ${Math.round(this.referencePose.heading)}° ${this.referencePose.northReference} north · elevation ${Math.round(this.referencePose.pitch)}°`
+      : "No reference set. Face the selected heading and elevation.");
     element<HTMLButtonElement>("head-start").disabled =
       this.enabled || this.busy;
     element<HTMLButtonElement>("head-stop").disabled =
       !this.enabled && !this.busy;
-    element<HTMLButtonElement>("head-forward").disabled =
+    element<HTMLButtonElement>("align-direction").disabled =
       !this.enabled || this.busy || !fresh;
     element<HTMLButtonElement>("head-up").disabled =
       !this.enabled || this.busy || !fresh || this.tracker.phase !== "up";
-    element<HTMLButtonElement>("head-right").disabled =
-      !this.enabled || this.busy || !fresh || this.tracker.phase !== "right";
-    element("head-right").hidden = this.tracker.config.format === "gravity";
-    element("head-angle-settings").hidden =
-      input("head-format").value === "gravity";
+    element<HTMLButtonElement>("head-realign").disabled =
+      !this.enabled || this.busy || (!this.referencePose && !this.pose);
     const last = this.samples.at(-1);
     const recent = this.samples.filter((s) => now - s.time <= 2000);
     const hz =
@@ -284,23 +270,15 @@ export class HeadControls {
     this.changed();
   }
 
-  private config(): MotionConfig {
-    return {
-      format: input("head-format").value as MotionConfig["format"],
-      pitchAxis: input("head-pitch-axis").value as Axis,
-      yawAxis: input("head-yaw-axis").value as Axis,
-      pitchSign: Number(input("head-pitch-sign").value),
-      yawSign: Number(input("head-yaw-sign").value),
-    };
-  }
-
   private async download(): Promise<void> {
     if (!this.samples.length || this.exporting) return;
     const first = this.startedAt;
     const report = {
-      version: 1,
+      version: 2,
+      appVersion: version,
       sdk: dependencies["@evenrealities/even_hub_sdk"],
-      config: this.tracker.config,
+      config: { format: "gravity" },
+      reference: this.referencePose,
       phase: this.tracker.phase,
       lastPose: this.tracker.pose,
       lastHostTransferMs: this.transferMs,

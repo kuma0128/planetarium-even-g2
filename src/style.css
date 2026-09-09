@@ -607,11 +607,6 @@ input[type="datetime-local"] {
 .head-steps .button {
   text-align: left;
 }
-.head-axis-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
 .head-raw {
   font: 11px/1.8 monospace;
   overflow-wrap: anywhere;

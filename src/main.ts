@@ -8,10 +8,7 @@ import {
   type Sky,
 } from "./sky.ts";
 import {
-  HEADING_TIMEOUT_MS,
   magneticDeclination,
-  PhoneCompass,
-  smoothHeading,
   trueHeading,
   type NorthReference,
 } from "./compass.ts";
@@ -34,7 +31,6 @@ const observing = {
   time: new Date(),
   heading: 180,
 };
-const phoneState = { enabled: false, receivedAt: 0, generation: 0 };
 const skyCache = {
   value: null as Sky | null,
   key: "",
@@ -54,7 +50,6 @@ const delivery = {
   key: "",
   timer: undefined as number | undefined,
 };
-const phone = new PhoneCompass();
 const glasses = new GlassesDisplay(
   (status) => text("bridge-status", status),
   (gesture) => {
@@ -62,8 +57,6 @@ const glasses = new GlassesDisplay(
     else if (gesture === "tap")
       setTimeMode(observing.timeMode === "now" ? "tonight" : "now");
     else {
-      if (head.controlsYaw) void head.stop();
-      manualMode();
       setHeading(observing.heading + (gesture === "left" ? -15 : 15));
     }
   },
@@ -84,16 +77,18 @@ const glasses = new GlassesDisplay(
 );
 const head = new HeadControls(
   glasses,
-  () => ({ heading: observing.heading, pitch: Number(input("pitch").value) }),
+  () => ({
+    heading: observing.heading,
+    pitch: Number(input("pitch").value),
+    northReference: input("north-reference").value as NorthReference,
+  }),
   requestRender,
   () => {
-    // Preserve the last view when stopping, changing format, or recalibrating.
+    // Preserve the last elevation when stopping or aligning another direction.
     if (head.pose) {
-      if (head.pose.heading != null) setHeading(head.pose.heading);
       input("pitch").value = String(head.pose.pitch);
     }
   },
-  manualMode,
 );
 
 function localInput(date: Date): string {
@@ -123,17 +118,6 @@ function setTimeMode(mode: TimeMode): void {
 function setHeading(degrees: number): void {
   observing.heading = wrap(degrees);
   input("heading").value = String(Math.round(observing.heading) % 360);
-  requestRender();
-}
-function manualMode(): void {
-  phoneState.generation++;
-  phone.stop();
-  phoneState.enabled = false;
-  phoneState.receivedAt = 0;
-  pressed("manual-mode", true);
-  pressed("phone-mode", false);
-  input("heading").disabled = false;
-  text("compass-status", "Match the heading shown on your compass.");
   requestRender();
 }
 function setLocation(value: Location, label: string): void {
@@ -190,14 +174,6 @@ function updateControls(): void {
     input("date").value = localInput(observing.time);
   const calibrating = head.enabled && head.tracker.phase !== "neutral";
   input("pitch").disabled = head.pose != null || calibrating;
-  input("heading").disabled =
-    phoneState.enabled || (head.controlsYaw && (calibrating || head.pose != null));
-  element<HTMLButtonElement>("phone-mode").disabled = head.controlsYaw;
-  input("north-reference").disabled = phoneState.enabled;
-  for (const button of document.querySelectorAll<HTMLButtonElement>(
-    "[data-heading]",
-  ))
-    button.disabled = head.controlsYaw && (calibrating || head.pose != null);
 }
 function render(): void {
   const monotonicNow = performance.now();
@@ -206,7 +182,7 @@ function render(): void {
   updateControls();
   const heading = trueHeading(
     {
-      heading: head.pose?.heading ?? observing.heading,
+      heading: observing.heading,
       reference: input("north-reference").value as NorthReference,
     },
     skyCache.declination,
@@ -224,23 +200,16 @@ function render(): void {
     fullSky: input("full-sky").checked,
     showInfo: input("sky-info").checked,
   };
-  const headingSource = phoneState.enabled
-    ? Date.now() - phoneState.receivedAt <= HEADING_TIMEOUT_MS
-      ? "Phone"
-      : "Phone: waiting"
-    : "Manual";
   const source = head.pose
     ? !head.active
       ? "Head paused"
-      : head.controlsYaw
-        ? "G2 angles"
-        : `${headingSource} + head tilt`
-    : headingSource;
+      : "Manual + head tilt"
+    : "Manual";
   const { header, footer } = renderView(canvas, sky, options, {
     time: observing.time,
     timeMode: observing.timeMode,
     location: observing.location,
-    rawHeading: head.pose?.heading ?? observing.heading,
+    rawHeading: observing.heading,
     heading,
     headingSource: source,
     declination: skyCache.declination,
@@ -299,70 +268,20 @@ function updateGlasses(frameKey: string, heading: number | null, now: number): v
   }
 }
 
-element("manual-mode").onclick = () => {
-  if (head.controlsYaw) void head.stop();
-  manualMode();
-};
-element("phone-mode").onclick = async () => {
-  const generation = ++phoneState.generation;
-  phoneState.receivedAt = 0;
-  try {
-    await phone.start(
-      (sample) => {
-        if (generation !== phoneState.generation) return;
-        const next = phoneState.receivedAt
-          ? smoothHeading(observing.heading, sample.heading)
-          : sample.heading;
-        phoneState.receivedAt = Date.now();
-        input("north-reference").value = sample.reference;
-        setHeading(next);
-      },
-      (status) => {
-        if (generation === phoneState.generation) {
-          text("compass-status", status);
-          requestRender();
-        }
-      },
-      (status) => {
-        if (generation !== phoneState.generation) return;
-        manualMode();
-        text("compass-status", status);
-      },
-    );
-    if (generation !== phoneState.generation) return;
-    phoneState.enabled = true;
-    pressed("manual-mode", false);
-    pressed("phone-mode", true);
-    input("heading").disabled = true;
-  } catch (error) {
-    if (generation !== phoneState.generation) return;
-    manualMode();
-    text(
-      "compass-status",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-  requestRender();
-};
 input("heading").oninput = () => setHeading(Number(input("heading").value));
 for (const button of document.querySelectorAll<HTMLButtonElement>(
   "[data-heading]",
 ))
   button.onclick = () => {
-    manualMode();
     setHeading(Number(button.dataset.heading));
   };
 for (const id of ["pitch", "fov", "magnitude", "lines", "north-reference", "full-sky", "sky-info", "sky-labels"]) {
   element(id).addEventListener("input", requestRender);
   element(id).addEventListener("change", requestRender);
 }
-element("north-reference").addEventListener("input", () => {
-  if (head.controlsYaw) head.recalibrate();
-});
 input("offset").onchange = () => {
   if (!input("offset").value || !input("offset").checkValidity())
     input("offset").value = "0";
-  if (head.controlsYaw) head.recalibrate();
   requestRender();
 };
 for (const mode of ["now", "tonight", "custom"] as const)
@@ -484,7 +403,6 @@ window.addEventListener("pagehide", () => {
   clearTimeout(delivery.timer);
   clearTimeout(renderState.timer);
   if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
-  phone.stop();
   glasses.stop();
 });
 // Phone visibility is independent of G2's foreground. The SDK's foreground-exit,

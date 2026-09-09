@@ -203,7 +203,6 @@ test("Mobile browser preview keeps manual controls and reports that no native ho
   await page.goto("/");
   await expect(page.locator("#heading-source")).toHaveText("Manual");
   await page.locator("#head-diagnostics summary").click();
-  await page.selectOption("#head-format", "degrees");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
