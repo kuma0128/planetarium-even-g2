@@ -6,6 +6,10 @@ An open-source Even Hub app that puts a sky map on Even Realities G2. Choose you
 
 **Status: prototype.** The browser preview, automated tests, and app packaging have been checked. Sensor access and optical output on physical G2, iPhone, and Android devices have not been verified. This version uses manual or phone headings; it does not track the direction of your head.
 
+![G2 Planetarium browser UI showing a night sky map, compass, time, location, and visible objects](docs/images/planetarium-ui.jpg)
+
+*Web interface preview: Tonight in Tokyo, facing west.*
+
 ## Features
 
 - **Now, Tonight, or Custom:** follow the current sky or explore a selected date. Tonight chooses 30 minutes after astronomical dusk, or the current time if it is already dark, and explains polar-day fallbacks.
@@ -17,7 +21,7 @@ An open-source Even Hub app that puts a sky map on Even Realities G2. Choose you
 
 ## Run the browser preview
 
-Requires Node.js 22.18 or later and npm.
+Requires Node.js 22.18 or later and npm for the TypeScript app and Even Hub SDK. Python catalog maintenance uses [uv](https://docs.astral.sh/uv/); see [Data and licenses](#data-and-licenses).
 
 ```bash
 git clone https://github.com/kuma0128/planetarium-even-g2.git
@@ -80,10 +84,12 @@ Magnetic declination uses the **current physical date**, independent of the simu
 
 Application code is licensed under [GPL-3.0-only](LICENSE). The bundled star catalog is derived from David Nash's HYG Database v4.1 and remains under **CC BY-SA 4.0**. Constellation lines and standard constellation names come from Olaf Frohn's D3-Celestial under **BSD 3-Clause**. Library licenses and attribution are included in the [credits page](public/credits.html) and `public/licenses/`.
 
-Catalog source revisions are pinned, and regular builds do not download astronomical data. To regenerate the bundled catalogs:
+Catalog source revisions are pinned, and regular builds do not download astronomical data. [Install uv](https://docs.astral.sh/uv/getting-started/installation/) to regenerate the bundled catalogs:
 
 ```bash
-python3 scripts/update-catalog.py
+uv run --locked scripts/update-catalog.py
 ```
+
+uv selects Python from `.python-version` and manages the local environment using `pyproject.toml` and `uv.lock`. The generator uses only the Python standard library. CI runs the same command and checks that the bundled catalogs and source licenses are reproduced without changes.
 
 Catalog regeneration requires network access. Sky calculations and rendering run locally without API keys, and the app does not upload your observing location.

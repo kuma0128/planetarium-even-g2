@@ -3,3 +3,6 @@ dist/
 *.ehpk
 .DS_Store
 artifacts/
+.venv/
+__pycache__/
+*.py[cod]

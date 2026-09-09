@@ -1,0 +1,9 @@
+[project]
+name = "planetarium-catalog-tools"
+version = "0.1.0"
+description = "Reproducible catalog generation for G2 Planetarium"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false
