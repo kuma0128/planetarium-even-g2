@@ -93,7 +93,7 @@ export class HeadControls {
     }
     const phase = this.tracker.phase;
     const recovering = now - this.tracker.lastSampleAt > MOTION_TIMEOUT_MS;
-    if (!this.tracker.receive(sample, now)) return;
+    if (!this.tracker.accept(sample, now)) return;
     this.samples.push({ ...sample, time: now });
     if (this.samples.length > 600) this.samples.shift();
     if (phase !== this.tracker.phase) {
@@ -206,7 +206,6 @@ export class HeadControls {
     const fresh = now - this.tracker.lastSampleAt <= MOTION_TIMEOUT_MS;
     text("head-state", this.active ? "Tracking" : !this.enabled ? "Off"
       : !fresh ? "Waiting for sensor" : "Calibrating / paused");
-    text("head-scope", "Up / down: head movement. Left / right: temple touchpad scroll, 15° per step. Scroll up for left; scroll down for right. Head tracking stays on.");
     text("head-reference", this.referencePose
       ? `${this.tracker.phase === "neutral" ? "Previous reference (paused)" : "Calibration reference"}: ${Math.round(this.referencePose.heading)}° ${this.referencePose.northReference} north · elevation ${Math.round(this.referencePose.pitch)}°`
       : "No reference set. Face the selected heading and elevation.");

@@ -3,6 +3,12 @@ import { validLocation, wrap, type Location } from "./sky.ts";
 
 export type NorthReference = "magnetic" | "true";
 export type HeadingSample = { heading: number; reference: NorthReference };
+/**
+ * Declination from the World Magnetic Model bundled with geomagnetism 0.2.0
+ * (WMM2025, valid until 2029-11-13). Outside that window the library throws
+ * and this fails closed: magnetic headings pause G2 updates until the
+ * dependency is updated or a true-north heading is selected.
+ */
 export function magneticDeclination(
   location: Location,
   physicalTime: Date,

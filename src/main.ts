@@ -2,6 +2,7 @@ import "./style.css";
 import {
   calculateSky,
   tonight,
+  usableHeight,
   validLocation,
   wrap,
   type Location,
@@ -62,8 +63,7 @@ const glasses = new GlassesDisplay(
   },
   {
     onConnected: () => {
-      delivery.key = "";
-      delivery.lastSent = -Infinity;
+      resetDelivery();
       requestRender();
     },
     onForeground: () => {
@@ -85,8 +85,10 @@ const head = new HeadControls(
   requestRender,
   () => {
     // Preserve the last elevation when stopping or aligning another direction.
+    // The slider has 1° steps: round explicitly instead of letting the browser
+    // snap a fractional value, so the reference elevation is a visible choice.
     if (head.pose) {
-      input("pitch").value = String(head.pose.pitch);
+      input("pitch").value = String(Math.round(head.pose.pitch));
     }
   },
 );
@@ -130,6 +132,12 @@ function setLocation(value: Location, label: string): void {
   text("location-status", label);
   if (observing.timeMode === "tonight") setTimeMode("tonight");
   requestRender();
+}
+function resetDelivery(): void {
+  // A new session or an explicit refresh resends every tile with the next frame.
+  delivery.force = true;
+  delivery.key = "";
+  delivery.lastSent = -Infinity;
 }
 function requestRender(): void {
   if (renderState.requested || renderState.disposed) return;
@@ -345,7 +353,7 @@ element("locate").onclick = async () => {
       fix = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        height: position.coords.altitude ?? 0,
+        height: usableHeight(position.coords.altitude),
       };
     }
     if (generation === observing.locationGeneration)
@@ -368,9 +376,7 @@ async function connect(): Promise<void> {
   button.disabled = true;
   try {
     await glasses.connect();
-    delivery.force = true;
-    delivery.key = "";
-    delivery.lastSent = 0;
+    resetDelivery();
     if (!observing.location)
       text(
         "location-status",

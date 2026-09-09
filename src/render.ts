@@ -1,5 +1,4 @@
 import {
-  DEG,
   direction,
   project,
   type Horizontal,
@@ -71,26 +70,6 @@ export function renderSky(
     }
     ctx.stroke();
   };
-  // Great-circle interpolation clips constellation lines at the horizon/camera plane.
-  const arc = (a: Horizontal, b: Horizontal): Horizontal[] => {
-    const vector = (p: Horizontal) => [
-      Math.cos(p.altitude * DEG) * Math.sin(p.azimuth * DEG),
-      Math.cos(p.altitude * DEG) * Math.cos(p.azimuth * DEG),
-      Math.sin(p.altitude * DEG),
-    ];
-    const v = vector(a),
-      w = vector(b);
-    return Array.from({ length: 17 }, (_, i) => {
-      const t = i / 16,
-        x = v[0]! * (1 - t) + w[0]! * t,
-        y = v[1]! * (1 - t) + w[1]! * t,
-        z = v[2]! * (1 - t) + w[2]! * t;
-      return {
-        azimuth: Math.atan2(x, y) / DEG,
-        altitude: Math.atan2(z, Math.hypot(x, y)) / DEG,
-      };
-    });
-  };
   for (const altitude of [0, 30, 60])
     drawPath(
       Array.from({ length: 181 }, (_, i) => ({ azimuth: i * 2, altitude })),
@@ -108,30 +87,32 @@ export function renderSky(
       ctx.fillText(direction(azimuth), p!.x + 3, p!.y - 3);
     }
   }
+  // Constellation lines are densified along great circles in sky.ts, so they
+  // only need connecting here and clip cleanly at the horizon/camera plane.
   if (options.lines)
-    for (const line of sky.lines)
-      for (let i = 1; i < line.points.length; i++) {
-        drawPath(arc(line.points[i - 1]!, line.points[i]!), "#555", true);
-      }
-  const visible = sky.objects.filter(
-    (o) =>
-      o.altitude >= 0 &&
-      (o.kind !== "star" || o.magnitude <= options.magnitude) &&
-      within(project(o, view), 3),
-  );
+    for (const line of sky.lines) drawPath(line.points, "#555", true);
+  // Project each candidate once and reuse the position for symbols and labels.
+  const placed: { object: SkyObject; x: number; y: number }[] = [];
+  for (const object of sky.objects) {
+    if (object.altitude < 0) continue;
+    if (object.kind === "star" && object.magnitude > options.magnitude) continue;
+    const p = project(object, view);
+    if (within(p, 3)) placed.push({ object, x: p!.x, y: p!.y });
+  }
   const occupied: { x: number; y: number; width: number }[] = [];
-  for (const object of [...visible].sort((a, b) => a.magnitude - b.magnitude)) {
-    const p = project(object, view)!;
+  for (const p of [...placed].sort(
+    (a, b) => a.object.magnitude - b.object.magnitude,
+  )) {
+    const { object } = p;
     const radius =
       object.kind === "moon"
         ? 4
         : object.kind === "sun"
           ? 4
           : Math.max(0.7, Math.min(2.5, (5.7 - object.magnitude) * 0.45));
-    ctx.fillStyle =
-      object.kind === "star"
-        ? `rgb(${Math.round(Math.max(95, 245 - object.magnitude * 23))} ${Math.round(Math.max(95, 245 - object.magnitude * 23))} ${Math.round(Math.max(95, 245 - object.magnitude * 23))})`
-        : "#fff";
+    // Fainter stars are drawn darker, down to a floor that stays visible.
+    const shade = Math.round(Math.max(95, 245 - object.magnitude * 23));
+    ctx.fillStyle = object.kind === "star" ? `rgb(${shade} ${shade} ${shade})` : "#fff";
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, 2 * Math.PI);
     ctx.fill();
@@ -168,7 +149,7 @@ export function renderSky(
   ctx.lineTo(width / 2, height / 2 + 5);
   ctx.stroke();
   ctx.restore();
-  return visible;
+  return placed.map((p) => p.object);
 }
 
 /** Captions are part of the frame, so hiding them clears their pixels on G2. */

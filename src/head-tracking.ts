@@ -66,8 +66,12 @@ export class HeadTracker {
 
   receive(value: unknown, now: number): boolean {
     const sample = readMotionSample(value);
-    if (!sample || !Number.isFinite(now) || now <= this.lastSampleAt)
-      return false;
+    return sample ? this.accept(sample, now) : false;
+  }
+
+  /** Accept a reading that readMotionSample has already validated. */
+  accept(sample: MotionSample, now: number): boolean {
+    if (!Number.isFinite(now) || now <= this.lastSampleAt) return false;
     this.expire(now);
     this.lastSampleAt = now;
     this.samples = this.samples.filter((s) => now - s.time <= 1000);
@@ -160,7 +164,7 @@ export class HeadTracker {
     // Apply the captured pose immediately, including when the device stops sending at rest.
     const latest = this.samples.at(-1)!;
     this.lastSampleAt = -Infinity;
-    this.receive(latest, now);
+    this.accept(latest, now);
   }
 
   private stable(now: number): MotionSample {

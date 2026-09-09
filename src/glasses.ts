@@ -16,7 +16,7 @@ import {
 import { LatestFrameQueue } from "./frame-queue.ts";
 import { MotionStream } from "./motion-stream.ts";
 import { DISPLAY_HEIGHT, MAP_WIDTH, pngBytes } from "./render.ts";
-import { validLocation, type Location } from "./sky.ts";
+import { usableHeight, validLocation, type Location } from "./sky.ts";
 
 const TILE_WIDTH = MAP_WIDTH / 2;
 const TILE_HEIGHT = DISPLAY_HEIGHT / 2;
@@ -44,8 +44,11 @@ async function withTimeout<T>(operation: Promise<T>, ms: number, message: string
 
 function samePixels(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
   if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++)
-    if (a[i] !== b[i]) return false;
+  // ImageData buffers hold whole RGBA pixels: compare 32-bit words, not bytes.
+  const wa = new Uint32Array(a.buffer, a.byteOffset, a.length >>> 2);
+  const wb = new Uint32Array(b.buffer, b.byteOffset, b.length >>> 2);
+  for (let i = 0; i < wa.length; i++) if (wa[i] !== wb[i]) return false;
+  for (let i = wa.length << 2; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
 }
 
@@ -303,7 +306,7 @@ export class GlassesDisplay {
     const location = {
       latitude: fix.latitude,
       longitude: fix.longitude,
-      height: fix.altitude ?? 0,
+      height: usableHeight(fix.altitude),
     };
     return validLocation(location) ? location : null;
   }

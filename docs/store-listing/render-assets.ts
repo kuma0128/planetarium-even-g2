@@ -31,7 +31,7 @@ const manifest = [];
 for (const scene of scenes) {
   const time = new Date(scene.time);
   const sky = calculateSky(time, location);
-  const target = sky.objects.find(object => object.name === scene.target)!;
+  const target = sky.objects.find((object) => object.name === scene.target);
   if (!target || target.altitude < 0) throw new Error(`Target is not visible: ${scene.target}`);
   const heading = Math.round(target.azimuth);
   const pitch = Math.round(target.altitude + scene.pitchOffset);

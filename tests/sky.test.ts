@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   angleDifference,
   calculateSky,
+  greatCircle,
   project,
   tonight,
+  usableHeight,
   validLocation,
 } from "../src/sky.ts";
 
@@ -106,4 +108,31 @@ test("Zenith and polar coordinates do not cause NaN, invalid input is rejected",
   assert.equal(validLocation({ ...tokyo, longitude: 181 }), false);
   assert.throws(() => calculateSky(new Date("invalid"), tokyo));
   assert.throws(() => calculateSky(new Date(), { ...tokyo, latitude: 91 }));
+});
+
+test("Great-circle densification keeps the endpoints and follows the horizon", () => {
+  const points = greatCircle([
+    { azimuth: 0, altitude: 0 },
+    { azimuth: 90, altitude: 0 },
+    { azimuth: 90, altitude: 45 },
+  ]);
+  assert.equal(points.length, 33);
+  assert.ok(Math.abs(points[0]!.azimuth) < 1e-9 && Math.abs(points[0]!.altitude) < 1e-9);
+  assert.ok(Math.abs(points[8]!.azimuth - 45) < 1e-9);
+  assert.ok(Math.abs(points[16]!.azimuth - 90) < 1e-9);
+  assert.ok(points.slice(0, 17).every((p) => Math.abs(p.altitude) < 1e-9));
+  assert.ok(Math.abs(points.at(-1)!.altitude - 45) < 1e-9);
+  assert.ok(points.every((p) => p.azimuth >= 0 && p.azimuth < 360));
+  assert.deepEqual(greatCircle([{ azimuth: 10, altitude: 10 }]), []);
+  assert.ok(calculateSky(new Date("2026-09-09T12:00:00Z"), tokyo).lines.every(
+    (line) => line.points.length === 0 || (line.points.length - 1) % 16 === 0,
+  ));
+});
+test("GPS altitude is clamped to the supported range instead of rejecting the fix", () => {
+  assert.equal(usableHeight(120.5), 120.5);
+  assert.equal(usableHeight(50000), 10000);
+  assert.equal(usableHeight(-2000), -500);
+  assert.equal(usableHeight(NaN), 0);
+  assert.equal(usableHeight(null), 0);
+  assert.equal(usableHeight(undefined), 0);
 });

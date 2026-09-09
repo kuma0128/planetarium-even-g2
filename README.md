@@ -13,7 +13,7 @@ Set your viewing direction manually, then look up/down to follow head elevation 
 ## Features
 
 - **Now, Tonight, or Custom:** follow the current sky or explore a selected date. Tonight chooses 30 minutes after astronomical dusk, or the current time if it is already dark, and explains polar-day fallbacks.
-- **Your observing location:** use location permission or enter latitude and longitude. Date input and display use your **device's time zone**, including when you choose coordinates in another country.
+- **Your observing location:** use location permission or enter latitude and longitude. A reported GPS altitude outside −500 to 10,000 m is clamped instead of rejecting the fix. Date input and display use your **device's time zone**, including when you choose coordinates in another country.
 - **An offline sky catalog:** 2,865 stars, constellation lines, the Moon, Sun, Mercury, Venus, Mars, Jupiter, and Saturn. Objects below the horizon are hidden.
 - **Compass alignment:** face a known direction and enter its heading manually. Choose magnetic or true north, with magnetic declination calculated for your location and today's date.
 - **Adjustable view:** change elevation, field of view, the star magnitude limit, and constellation lines. See the brightest named objects with their azimuth and altitude.
@@ -107,7 +107,7 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 
 - `src/main.ts`: observing state, input events, sky updates, and G2 connection coordination.
 - `src/view.ts`: browser display, visible-object cards, and shared captions for the preview and G2.
-- `src/sky.ts`: Astronomy Engine calculations, HYG J2000 proper motion, precession and nutation, horizontal coordinates, and perspective projection.
+- `src/sky.ts`: Astronomy Engine calculations, HYG J2000 proper motion, precession and nutation, horizontal coordinates, great-circle constellation lines, and perspective projection.
 - `src/compass.ts`: magnetic declination and conversion of manually entered headings to true north.
 - `src/head-tracking.ts`: stable pose capture, gravity-based elevation, filtering, and stale-data invalidation.
 - `src/head-controls.ts`: live sensor controls, guided calibration, diagnostics, and local log export.
@@ -118,7 +118,7 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 
 The map is an enlarged view of the sky, not an optically calibrated AR overlay. Buildings, terrain, weather, and light pollution are not modeled. Head tracking changes the map's viewing direction; matching the optical display's field of view, gaze offset, and real stars would require additional calibration and hardware validation.
 
-Magnetic declination uses the **current physical date**, independent of the simulated sky date. If the magnetic model cannot provide a valid correction, sending pauses until you select a usable north reference. Use a true-north compass and select **True north** in that case.
+Magnetic declination uses the **current physical date**, independent of the simulated sky date. If the magnetic model cannot provide a valid correction, sending pauses until you select a usable north reference. Use a true-north compass and select **True north** in that case. The bundled World Magnetic Model (geomagnetism 0.2.0, WMM2025) is valid until 13 November 2029; update that dependency before then, or magnetic headings pause G2 updates after that date.
 
 ## Data and licenses
 

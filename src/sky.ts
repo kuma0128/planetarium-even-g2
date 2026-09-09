@@ -60,6 +60,41 @@ export function validLocation(location: Location): boolean {
   );
 }
 
+/** GPS altitude is noisy; keep a good fix usable instead of rejecting it. */
+export function usableHeight(altitude: number | null | undefined): number {
+  return altitude != null && Number.isFinite(altitude)
+    ? Math.min(10000, Math.max(-500, altitude))
+    : 0;
+}
+
+/**
+ * Densify a polyline along great circles. Rendering only has to connect the
+ * points, and the segments clip cleanly at the horizon and the camera plane.
+ */
+export function greatCircle(path: Horizontal[], steps = 16): Horizontal[] {
+  const vector = (p: Horizontal) => [
+    Math.cos(p.altitude * DEG) * Math.sin(p.azimuth * DEG),
+    Math.cos(p.altitude * DEG) * Math.cos(p.azimuth * DEG),
+    Math.sin(p.altitude * DEG),
+  ];
+  const points: Horizontal[] = [];
+  for (let i = 1; i < path.length; i++) {
+    const v = vector(path[i - 1]!),
+      w = vector(path[i]!);
+    for (let s = i === 1 ? 0 : 1; s <= steps; s++) {
+      const t = s / steps,
+        x = v[0]! * (1 - t) + w[0]! * t,
+        y = v[1]! * (1 - t) + w[1]! * t,
+        z = v[2]! * (1 - t) + w[2]! * t;
+      points.push({
+        azimuth: wrap(Math.atan2(x, y) / DEG),
+        altitude: Math.atan2(z, Math.hypot(x, y)) / DEG,
+      });
+    }
+  }
+  return points;
+}
+
 export function calculateSky(date: Date, location: Location): Sky {
   if (!Number.isFinite(date.getTime()) || !validLocation(location))
     throw new Error("Check the date, time, and observing location.");
@@ -107,12 +142,14 @@ export function calculateSky(date: Date, location: Location): Sky {
   );
   for (const [body, name, kind] of bodies) {
     const eq = Equator(body, date, observer, true, true);
+    const horizon = Horizon(date, observer, eq.ra, eq.dec, "normal");
     objects.push({
       id: body,
       name,
       kind,
       magnitude: Illumination(body, date).mag,
-      ...Horizon(date, observer, eq.ra, eq.dec, "normal"),
+      azimuth: horizon.azimuth,
+      altitude: horizon.altitude,
     });
   }
   const lines: SkyLine[] = [];
@@ -120,7 +157,7 @@ export function calculateSky(date: Date, location: Location): Sky {
     for (const path of paths)
       lines.push({
         name,
-        points: path.map(([ra, dec]) => horizontal(ra, dec)),
+        points: greatCircle(path.map(([ra, dec]) => horizontal(ra, dec))),
       });
   }
   return {
