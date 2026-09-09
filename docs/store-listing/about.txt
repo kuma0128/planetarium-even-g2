@@ -1,0 +1,21 @@
+Explore the sky from your Even Realities G2. Choose your observing location and a time, then discover stars, constellations, the Moon and planets.
+
+YOUR SKY, YOUR DISPLAY
+Enjoy a full-display planetarium with text hidden by default. Switch to a compact map, or enable date and sky information and star/direction labels independently.
+
+PLAN YOUR VIEW
+Switch between Now, Tonight and a custom date. Use your current location or enter coordinates. Adjust the elevation, field of view, star brightness limit and constellation lines.
+
+FIND YOUR DIRECTION
+Align the map with a manual compass reading or a supported phone compass. Choose magnetic or true north. Named objects show their direction and elevation, with a Moon illumination readout.
+
+EXPLORE ON G2
+Tap to switch Now / Tonight, swipe to change the manual heading, and double-tap to open the exit dialog. Experimental head tracking can follow upward and downward movement after two-pose calibration. This feature is still awaiting physical-device validation; sensor support and performance may vary.
+
+LOCAL SKY CALCULATIONS
+A bundled catalog includes 2,865 stars, constellation lines, the Sun, Moon, Mercury, Venus, Mars, Jupiter and Saturn. Sky calculations run locally. The app does not upload your observing location.
+
+Requires Even Realities G2 and Even app 2.2.10 or later. The interface is in English. Phone compass availability depends on your device and the Even app. The display is a sky map, not an optically aligned overlay of real stars. Store images are rendered previews; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
+
+Open-source code, credits and support:
+https://github.com/kuma0128/planetarium-even-g2

@@ -20,6 +20,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 body {
   margin: 0;
 }
@@ -201,30 +204,15 @@ h1 {
   border: 1px solid #2c4934;
   border-radius: 8px;
   overflow: hidden;
-  padding: 10px 0;
+  padding: 0;
   color: #b3ebb3;
-  min-height: 264px;
-}
-.lens-header,
-.lens-footer {
-  white-space: pre-line;
-  font:
-    16px/1.55 "Hiragino Kaku Gothic ProN",
-    sans-serif;
-  margin: 0 14px;
-  min-height: 46px;
-}
-.lens-footer {
-  font-size: 13px;
-  min-height: 64px;
-  padding-top: 7px;
 }
 .lens canvas {
   width: 100%;
   height: auto;
   display: block;
   filter: sepia(1) saturate(2) hue-rotate(57deg);
-  margin: 4px 0;
+  margin: 0;
 }
 .sky-meta {
   display: flex;
@@ -577,10 +565,59 @@ input[type="datetime-local"] {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-@media (min-width: 1350px) {
-  .lens {
-    min-height: 282px;
-  }
+.head-tracking {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+.head-tracking details {
+  margin-top: 0;
+}
+.head-tracking .section-title {
+  align-items: flex-start;
+  gap: 10px;
+}
+.head-tracking h2 .small-tag {
+  display: block;
+  margin-top: 3px;
+}
+.head-actions {
+  display: flex;
+  gap: 8px;
+}
+.head-actions > :first-child {
+  flex: 1;
+}
+.head-tracking .button {
+  font-size: 11px;
+  padding: 9px 10px;
+}
+.head-steps {
+  display: grid;
+  gap: 8px;
+}
+.head-steps .button {
+  text-align: left;
+}
+.head-axis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.head-raw {
+  font: 11px/1.8 monospace;
+  overflow-wrap: anywhere;
+  margin: 16px 0 8px;
+  color: var(--green);
+}
+.head-metrics {
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
 }
 @media (max-width: 1000px) {
   main {
@@ -610,14 +647,11 @@ input[type="datetime-local"] {
   .object-list {
     grid-template-columns: repeat(3, 1fr);
   }
-  .lens-header {
-    font-size: 14px;
-  }
-  .lens-footer {
-    font-size: 12px;
-  }
 }
 @media (max-width: 720px) {
+  .head-tracking {
+    grid-template-columns: 1fr;
+  }
   main {
     padding: 0 18px;
   }
@@ -678,15 +712,6 @@ input[type="datetime-local"] {
   }
   .lens {
     margin-top: 18px;
-    min-height: 225px;
-  }
-  .lens-header {
-    font-size: 13px;
-    min-height: 42px;
-  }
-  .lens-footer {
-    font-size: 11px;
-    min-height: 60px;
   }
   .sky-meta {
     font-size: 10px;

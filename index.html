@@ -25,7 +25,9 @@
         <div>
           <p class="eyebrow">YOUR WINDOW TO THE SKY</p>
           <h1>The sky, in sight.</h1>
-          <p class="lede">Your place. Your time. Find the stars in the direction you face.</p>
+          <p class="lede">
+            Your place. Your time. Find the stars in the direction you face.
+          </p>
         </div>
         <p id="bridge-status" class="connection" role="status">
           Browser preview
@@ -38,14 +40,14 @@
             ><span id="sky-period" class="pill">Now</span>
           </div>
           <div class="lens">
-            <p id="lens-header" class="lens-header"></p>
+            <p id="lens-header" hidden></p>
             <canvas
               id="sky"
               width="576"
-              height="144"
+              height="288"
               aria-label="Sky map for the selected location, time, and heading"
             ></canvas>
-            <p id="lens-footer" class="lens-footer"></p>
+            <p id="lens-footer" hidden></p>
           </div>
           <div class="sky-meta">
             <span id="location-label">Tokyo demo · Location not set</span
@@ -53,7 +55,22 @@
           </div>
           <div class="view-controls">
             <label class="inline-check"
-              ><input id="lines" type="checkbox" checked /> Constellations</label
+              ><input id="full-sky" type="checkbox" checked />
+              Full-display planetarium</label
+            >
+            <label class="inline-check"
+              ><input id="sky-info" type="checkbox" />
+              Date &amp; sky information</label
+            >
+            <label class="inline-check"
+              ><input id="sky-labels" type="checkbox" />
+              Star &amp; direction labels</label
+            >
+          </div>
+          <div class="view-controls">
+            <label class="inline-check"
+              ><input id="lines" type="checkbox" checked />
+              Constellations</label
             >
             <label class="inline-control"
               >Field of view
@@ -73,8 +90,14 @@
             >
           </div>
           <p class="caption">
-            A preview of the G2 sky map. The crosshair marks your selected heading and elevation.
+            Fill the G2 display with the sky, or turn off Full-display planetarium
+            for a compact view. Date, angle and Moon readouts are hidden by
+            default. Calibration instructions appear while setting up head tracking.
           </p>
+          <p id="preview-status" class="helper" role="status"></p>
+          <button id="refresh-display" class="button subtle" disabled>
+            Refresh G2 display
+          </button>
         </section>
         <section
           class="direction-panel panel"
@@ -126,7 +149,7 @@
           ><input
             id="pitch"
             type="range"
-            min="0"
+            min="-90"
             max="90"
             value="30"
             step="1"
@@ -136,9 +159,7 @@
             <div class="settings-fields">
               <label
                 >Heading reference<select id="north-reference">
-                  <option value="magnetic" selected>
-                    Magnetic north
-                  </option>
+                  <option value="magnetic" selected>Magnetic north</option>
                   <option value="true">True north</option>
                 </select></label
               >
@@ -155,7 +176,8 @@
             </div>
           </details>
           <p class="caption">
-            For phone compass mode, hold your phone flat and point its top edge toward the sky you want to view. Head tracking is not supported; set the elevation manually.
+            For phone compass mode, hold your phone flat and point its top edge
+            toward the sky you want to view.
           </p>
         </section>
         <section class="time-panel panel" aria-labelledby="time-title">
@@ -182,7 +204,9 @@
             <h2 id="location-title">Observing location</h2>
             <span class="small-tag">02</span>
           </div>
-          <button id="locate" class="button full">◎ Use current location</button>
+          <button id="locate" class="button full">
+            ◎ Use current location
+          </button>
           <p id="location-status" class="helper" role="status">
             Use your current location or enter coordinates below.
           </p>
@@ -214,6 +238,107 @@
           </form>
           <p class="caption">Location data stays on your device.</p>
         </section>
+        <section class="head-tracking panel" aria-labelledby="head-title">
+          <div class="head-main">
+            <div class="section-title">
+              <h2 id="head-title">
+                Head tracking <span class="small-tag">EXPERIMENTAL</span>
+              </h2>
+              <span id="head-state" class="small-tag">Off</span>
+            </div>
+            <p class="helper">
+              Follow your head's elevation using the G2 sensor. Calibrate while
+              wearing the glasses; keep using your compass for direction.
+            </p>
+            <p id="head-scope" class="helper"></p>
+            <div class="head-actions">
+              <button id="head-start" class="button subtle">
+                Start G2 sensor
+              </button>
+              <button id="head-stop" class="button" disabled>Stop</button>
+            </div>
+            <p id="head-status" class="helper" role="status">
+              Start the G2 sensor, then calibrate while wearing your glasses.
+            </p>
+            <div class="head-steps">
+              <button id="head-forward" class="button" disabled>
+                1. Capture forward pose
+              </button>
+              <button id="head-up" class="button" disabled>
+                2. Capture upward tilt
+              </button>
+              <button id="head-right" class="button" disabled hidden>
+                3. Capture right turn
+              </button>
+            </div>
+            <p class="caption">
+              First match the heading and elevation above to your forward view.
+              Then look 20–40° higher, without tilting sideways, and capture
+              again. You can also tap the glasses or ring to capture each pose.
+              The sky map follows your elevation; its scale is enlarged.
+            </p>
+          </div>
+          <details id="head-diagnostics">
+            <summary>Sensor details &amp; experimental yaw</summary>
+            <p class="helper">
+              The public SDK does not define the meaning or units of its axes.
+              The default assumes gravity readings. Select rotation angles only
+              after confirming the actual sensor output; a right-turn check is
+              required before yaw can follow.
+            </p>
+            <div class="settings-fields">
+              <label
+                >Sensor format<select id="head-format">
+                  <option value="gravity">Gravity vector — tilt only</option>
+                  <option value="degrees">Rotation angles — degrees</option>
+                  <option value="radians">Rotation angles — radians</option>
+                </select></label
+              >
+              <div id="head-angle-settings" class="head-axis-grid" hidden>
+                <label
+                  >Pitch axis<select id="head-pitch-axis">
+                    <option>x</option>
+                    <option>y</option>
+                    <option>z</option>
+                  </select></label
+                >
+                <label
+                  >Upward direction<select id="head-pitch-sign">
+                    <option value="1">Increasing</option>
+                    <option value="-1">Decreasing</option>
+                  </select></label
+                >
+                <label
+                  >Yaw axis<select id="head-yaw-axis">
+                    <option>x</option>
+                    <option>y</option>
+                    <option selected>z</option>
+                  </select></label
+                >
+                <label
+                  >Right-turn direction<select id="head-yaw-sign">
+                    <option value="1">Increasing</option>
+                    <option value="-1">Decreasing</option>
+                  </select></label
+                >
+              </div>
+            </div>
+            <p id="head-raw" class="head-raw">x — y — z —</p>
+            <div class="head-metrics">
+              <span id="head-sample-rate">0.0 samples/s</span
+              ><span id="head-sample-age">Waiting for readings</span
+              ><span id="head-received">0 sensor messages · 0 unusable</span
+              ><span id="head-transfer">No frame sent yet</span>
+            </div>
+            <button id="head-download" class="button subtle full" disabled>
+              Download sensor log
+            </button>
+            <p class="caption">
+              Last 600 readings; no location included. Transfer time measures
+              host acceptance, not when the image reaches your eyes.
+            </p>
+          </details>
+        </section>
       </div>
       <section class="objects-section" aria-labelledby="objects-title">
         <div class="section-title">
@@ -222,11 +347,12 @@
         </div>
         <div id="objects" class="object-list"></div>
         <p class="caption">
-          Shows objects above the horizon. Buildings, clouds, and local light pollution are not modeled.
+          Shows objects above the horizon. Buildings, clouds, and local light
+          pollution are not modeled.
         </p>
       </section>
       <footer class="page-footer">
-        <span>PLANETARIUM / EVEN G2</span
+        <span>PLANETARIUM / EVEN G2 <span id="app-version"></span></span
         ><span>Tap: Now / Tonight · Swipe: turn 15°</span
         ><a href="./credits.html">Data, calculations &amp; licenses</a>
       </footer>

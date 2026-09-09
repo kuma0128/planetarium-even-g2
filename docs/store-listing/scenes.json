@@ -1,0 +1,59 @@
+[
+  {
+    "file": "01-winter-stars.png",
+    "time": "2026-01-15T12:00:00Z",
+    "target": "Betelgeuse",
+    "pitchOffset": -4,
+    "fov": 100,
+    "fullSky": true,
+    "showInfo": false,
+    "labels": false,
+    "location": {
+      "latitude": 35.6762,
+      "longitude": 139.6503,
+      "height": 0
+    },
+    "heading": 151,
+    "pitch": 55,
+    "header": "",
+    "footer": ""
+  },
+  {
+    "file": "02-summer-stars.png",
+    "time": "2026-08-15T12:00:00Z",
+    "target": "Altair",
+    "pitchOffset": 6,
+    "fov": 110,
+    "fullSky": true,
+    "showInfo": false,
+    "labels": true,
+    "location": {
+      "latitude": 35.6762,
+      "longitude": 139.6503,
+      "height": 0
+    },
+    "heading": 150,
+    "pitch": 66,
+    "header": "",
+    "footer": ""
+  },
+  {
+    "file": "03-moon-and-planets.png",
+    "time": "2026-09-25T12:00:00Z",
+    "target": "Moon",
+    "pitchOffset": 0,
+    "fov": 100,
+    "fullSky": false,
+    "showInfo": true,
+    "labels": true,
+    "location": {
+      "latitude": 35.6762,
+      "longitude": 139.6503,
+      "height": 0
+    },
+    "heading": 145,
+    "pitch": 44,
+    "header": "Custom 25 Sept 2026, 21:00 GMT+9\nSE 145°  Alt 44°  Manual",
+    "footer": "Night sky\nMoon 44° / Saturn 34°\nMoon illuminated: 98%"
+  }
+]

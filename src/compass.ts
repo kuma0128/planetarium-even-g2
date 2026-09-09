@@ -100,31 +100,38 @@ export class PhoneCompass {
   async start(
     onSample: (sample: HeadingSample) => void,
     onStatus: (status: string) => void,
+    onUnavailable?: (status: string) => void,
   ): Promise<void> {
     this.stop();
     const generation = this.generation;
     if (!window.isSecureContext)
       throw new Error(
-        "Phone compass requires HTTPS. You can still set the heading manually.",
+        compassUnavailable("Phone compass requires HTTPS."),
       );
     if (!window.DeviceOrientationEvent)
       throw new Error(
-        "Phone compass is unavailable in this environment. Set the heading manually.",
+        compassUnavailable("This view does not provide a phone orientation sensor."),
       );
     const ctor = DeviceOrientationEvent as typeof DeviceOrientationEvent & {
       requestPermission?: (absolute?: boolean) => Promise<string>;
     };
-    if (
-      ctor.requestPermission &&
-      (await ctor.requestPermission(true)) !== "granted"
-    )
-      throw new Error("Compass permission was not granted.");
+    try {
+      if (ctor.requestPermission && (await ctor.requestPermission(true)) !== "granted")
+        throw new Error("Permission denied");
+    } catch {
+      throw new Error(compassUnavailable("Phone orientation access was not granted."));
+    }
     if (generation !== this.generation) return;
     let receivedAt = 0;
+    let lastIssue = "No compass readings arrived.";
     const startedAt = Date.now();
     const listener = (event: DeviceOrientationEvent) => {
       const sample = readHeading(event);
-      if (!sample) return;
+      if (!sample) {
+        lastIssue = headingIssue(event);
+        onStatus(lastIssue);
+        return;
+      }
       receivedAt = Date.now();
       onSample(sample);
       onStatus("Following the phone compass.");
@@ -132,9 +139,14 @@ export class PhoneCompass {
     window.addEventListener("deviceorientationabsolute", listener);
     window.addEventListener("deviceorientation", listener);
     const watchdog = window.setInterval(() => {
-      if (Date.now() - (receivedAt || startedAt) > HEADING_TIMEOUT_MS)
+      if (!receivedAt && Date.now() - startedAt > HEADING_TIMEOUT_MS) {
+        const message = compassUnavailable(lastIssue);
+        this.stop();
+        onStatus(message);
+        onUnavailable?.(message);
+      } else if (receivedAt && Date.now() - receivedAt > HEADING_TIMEOUT_MS)
         onStatus(
-          "No recent heading. Hold the phone flat or switch to manual mode.",
+          "No recent heading. Keeping the last direction. Hold the phone flat or switch to Manual.",
         );
     }, 1000);
     this.cleanup = () => {
@@ -151,4 +163,20 @@ export class PhoneCompass {
     this.cleanup?.();
     this.cleanup = null;
   }
+}
+
+function compassUnavailable(reason: string): string {
+  const inEven = Boolean((window as Window & { flutter_inappwebview?: unknown }).flutter_inappwebview);
+  return inEven
+    ? `${reason} This Even app view may not expose the phone compass. Location permission only supplies your position. Use your phone's Compass app, then enter its heading in Manual mode.`
+    : `${reason} Use a supported phone browser over HTTPS, or read your phone's Compass app and enter its heading in Manual mode.`;
+}
+
+function headingIssue(event: Orientation): string {
+  if ((event.beta != null && Math.abs(event.beta) > 45) ||
+      (event.gamma != null && Math.abs(event.gamma) > 45))
+    return "Hold the phone flat, with its top edge pointing toward your view.";
+  if (Number.isFinite(event.webkitCompassHeading))
+    return "Compass accuracy is too low. Move away from magnets and metal, then try again.";
+  return "No north-referenced compass reading. Relative phone motion cannot locate north.";
 }

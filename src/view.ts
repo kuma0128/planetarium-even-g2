@@ -1,5 +1,5 @@
 import { element, text } from "./dom.ts";
-import { renderSky, type RenderOptions } from "./render.ts";
+import { MAP_HEIGHT, renderCaptions, renderSky, type DisplayOptions, type RenderOptions } from "./render.ts";
 import {
   direction,
   skyBrightness,
@@ -18,6 +18,7 @@ type ViewState = {
   heading: number | null;
   headingSource: string;
   declination: number | null;
+  footerOverride?: string;
 };
 
 const timeLabels: Record<TimeMode, string> = {
@@ -31,6 +32,7 @@ export function renderView(
   sky: Sky,
   options: RenderOptions,
   state: ViewState,
+  display: DisplayOptions = { fullSky: true, showInfo: false },
 ): { header: string; footer: string } {
   const {
     time,
@@ -41,7 +43,9 @@ export function renderView(
     headingSource,
     declination,
   } = state;
-  const visible = renderSky(canvas, sky, options);
+  const visible = renderSky(canvas, sky, options, display.fullSky
+    ? { top: 0, height: canvas.height }
+    : { top: 54, height: MAP_HEIGHT });
   const targets = visible
     .filter((object) => object.name && object.kind !== "sun")
     .sort((a, b) => a.magnitude - b.magnitude)
@@ -60,13 +64,18 @@ export function renderView(
     minute: "2-digit",
     timeZoneName: "short",
   });
-  const header = `${modeLabel} ${timeLabel}\n${location ? "" : "Tokyo demo / "}${headingLabel}  Alt ${options.pitch}°  ${headingSource}`;
-  const footer = `${brightness}\n${
-    targets
-      .slice(0, 2)
-      .map((object) => `${object.name} ${Math.round(object.altitude)}°`)
-      .join(" / ") || "Try a different heading or elevation"
-  }\nMoon illuminated: ${Math.round(sky.moonFraction * 100)}%`;
+  const header = display.showInfo
+    ? `${modeLabel} ${timeLabel}\n${location ? "" : "Tokyo demo / "}${headingLabel}  Alt ${Math.round(options.pitch)}°  ${headingSource}`
+    : "";
+  const footer =
+    state.footerOverride ??
+    (display.showInfo ? `${brightness}\n${
+      targets
+        .slice(0, 2)
+        .map((object) => `${object.name} ${Math.round(object.altitude)}°`)
+        .join(" / ") || "Try a different heading or elevation"
+    }\nMoon illuminated: ${Math.round(sky.moonFraction * 100)}%` : "");
+  renderCaptions(canvas, header, footer);
   text("lens-header", header);
   text("lens-footer", footer);
   text("sky-period", modeLabel);
@@ -77,7 +86,7 @@ export function renderView(
   );
   text("heading-source", headingSource);
   text("heading-value", `${Math.round(rawHeading) % 360}°`);
-  text("pitch-value", `${options.pitch}°`);
+  text("pitch-value", `${Math.round(options.pitch)}°`);
   // No CSS transition across 359°→0°: the diagram follows the actual shortest path.
   const needle = element("compass-needle");
   needle.style.transition = "none";
@@ -95,7 +104,10 @@ export function renderView(
       : "Tokyo demo · Location not set",
   );
   text("light-label", brightness);
-  text("object-count", `${visible.length} objects · Brightest named objects below`);
+  text(
+    "object-count",
+    `${visible.length} objects · Brightest named objects below`,
+  );
   renderObjects(targets);
   return { header, footer };
 }

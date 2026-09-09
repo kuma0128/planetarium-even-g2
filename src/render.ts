@@ -14,26 +14,41 @@ export type RenderOptions = {
   fov: number;
   magnitude: number;
   lines: boolean;
+  labels?: boolean;
 };
 export const MAP_WIDTH = 576;
 export const MAP_HEIGHT = 144;
+export const DISPLAY_HEIGHT = 288;
+
+export type DisplayOptions = {
+  fullSky: boolean;
+  showInfo: boolean;
+};
 
 export function renderSky(
   canvas: HTMLCanvasElement,
   sky: Sky,
   options: RenderOptions,
+  viewport = { top: 0, height: canvas.height },
 ): SkyObject[] {
   const ctx = canvas.getContext("2d")!;
-  const view: View = { ...options, width: canvas.width, height: canvas.height };
+  const { width } = canvas;
+  const { height } = viewport;
+  const view: View = { ...options, width, height };
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, viewport.top, width, height);
+  ctx.clip();
+  ctx.translate(0, viewport.top);
   ctx.lineWidth = 1;
   const within = (p: { x: number; y: number } | null, margin = 0) =>
     p != null &&
     p.x >= margin &&
-    p.x < canvas.width - margin &&
+    p.x < width - margin &&
     p.y >= margin &&
-    p.y < canvas.height - margin;
+    p.y < height - margin;
   const drawPath = (
     points: Horizontal[],
     color: string,
@@ -87,7 +102,7 @@ export function renderSky(
       "#222",
     );
     const p = project({ azimuth, altitude: 2 }, view);
-    if (within(p, 12)) {
+    if (options.labels !== false && within(p, 12)) {
       ctx.fillStyle = "#aaa";
       ctx.font = "12px sans-serif";
       ctx.fillText(direction(azimuth), p!.x + 3, p!.y - 3);
@@ -126,7 +141,7 @@ export function renderSky(
       ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
       ctx.stroke();
     }
-    if (!object.name || (object.kind === "star" && object.magnitude > 2.6))
+    if (options.labels === false || !object.name || (object.kind === "star" && object.magnitude > 2.6))
       continue;
     ctx.font = "12px sans-serif";
     const width = ctx.measureText(object.name).width;
@@ -147,12 +162,56 @@ export function renderSky(
   }
   ctx.strokeStyle = "#888";
   ctx.beginPath();
-  ctx.moveTo(canvas.width / 2 - 5, canvas.height / 2);
-  ctx.lineTo(canvas.width / 2 + 5, canvas.height / 2);
-  ctx.moveTo(canvas.width / 2, canvas.height / 2 - 5);
-  ctx.lineTo(canvas.width / 2, canvas.height / 2 + 5);
+  ctx.moveTo(width / 2 - 5, height / 2);
+  ctx.lineTo(width / 2 + 5, height / 2);
+  ctx.moveTo(width / 2, height / 2 - 5);
+  ctx.lineTo(width / 2, height / 2 + 5);
   ctx.stroke();
+  ctx.restore();
   return visible;
+}
+
+/** Captions are part of the frame, so hiding them clears their pixels on G2. */
+export function renderCaptions(
+  canvas: HTMLCanvasElement,
+  header: string,
+  footer: string,
+): void {
+  const ctx = canvas.getContext("2d")!;
+  ctx.save();
+  ctx.font = "21px sans-serif";
+  ctx.textBaseline = "top";
+  for (const [content, top, height, lineHeight] of [
+    [header, 0, 48, 24],
+    [footer, 202, 86, 27],
+  ] as const) {
+    if (!content) continue;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, top, canvas.width, height);
+    const lines: string[] = [];
+    for (const paragraph of content.split("\n")) {
+      let line = "";
+      for (const word of paragraph.split(" ")) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > canvas.width - 4) {
+          lines.push(line);
+          line = word;
+        } else line = next;
+      }
+      lines.push(line);
+    }
+    const maxLines = Math.floor(height / lineHeight);
+    const visible = lines.slice(0, maxLines);
+    if (lines.length > maxLines) visible[maxLines - 1] += "…";
+    ctx.fillStyle = "#fff";
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, top, canvas.width, height);
+    ctx.clip();
+    visible.forEach((line, index) => ctx.fillText(line, 0, top + index * lineHeight));
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 export function pngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
