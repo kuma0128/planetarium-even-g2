@@ -113,7 +113,10 @@ export class PhoneCompass {
         compassUnavailable("This view does not provide a phone orientation sensor."),
       );
     const ctor = DeviceOrientationEvent as typeof DeviceOrientationEvent & {
-      requestPermission?: (absolute?: boolean) => Promise<string>;
+      // W3C includes an optional magnetometer request for absolute orientation.
+      // Safari's no-argument implementation ignores the extra argument.
+      // https://www.w3.org/TR/orientation-event/#dom-deviceorientationevent-requestpermission
+      requestPermission?: (absolute?: boolean) => Promise<PermissionState>;
     };
     try {
       if (ctor.requestPermission && (await ctor.requestPermission(true)) !== "granted")

@@ -65,6 +65,10 @@ This creates `g2-planetarium.ehpk`, an Even Hub app package. Successful [GitHub 
 
 The app connects automatically when it detects the Even Hub bridge. Use **Connect G2** to retry. If a previous image transfer or sensor stop is still waiting for the host, reconnect reports this after four seconds and restores the button. Retry after the connection recovers, or reopen the app if the host remains unresponsive. A regular browser runs the preview. This repository does not include custom firmware, and the app has not been published to the public Even Hub store.
 
+Image updates pause between G2 foreground exit and re-entry. Returning to the foreground resends the complete current view without reconnecting; head tracking requires calibration again. Transfers already waiting for the host at exit cannot be cancelled, but their late results do not close the resumed session.
+
+Device-status events identify devices only by serial number. Once the G2 serial is known, other devices' disconnects are ignored. Until then, including when device lookup fails or returns another model, any disconnect ends the session to avoid missing a lost G2 link. A ring disconnect can therefore require **Connect G2** in this fallback state.
+
 ## Try head tracking on G2
 
 This is an experimental implementation, **not yet verified on physical G2 hardware**. The [official IMU API](https://hub.evenrealities.com/docs/build/device-apis#imu) exposes `x/y/z` without specifying their units or coordinate convention. The default is a gravity-vector hypothesis, checked for stable magnitude during calibration; it is not automatic sensor-type detection.

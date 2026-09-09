@@ -53,6 +53,10 @@ export type GlassesFrame = {
   image: HTMLCanvasElement;
   force?: boolean;
 };
+type QueuedFrame = {
+  image: HTMLCanvasElement;
+  foregroundRevision: number;
+};
 export type GlassesHooks = {
   onConnected?: () => void;
   onForeground?: () => void;
@@ -62,7 +66,7 @@ export type GlassesHooks = {
 };
 export class GlassesDisplay {
   private bridge: EvenAppBridge | null = null;
-  private queue: LatestFrameQueue<GlassesFrame> | null = null;
+  private queue: LatestFrameQueue<QueuedFrame> | null = null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeDevice: (() => void) | null = null;
   private motion: MotionStream | null = null;
@@ -75,6 +79,8 @@ export class GlassesDisplay {
   private refreshSent = 0;
   private connecting: Promise<void> | null = null;
   private active = false;
+  private inForeground = false;
+  private foregroundRevision = 0;
   private generation = 0;
   constructor(
     private onStatus: (status: string) => void,
@@ -84,6 +90,9 @@ export class GlassesDisplay {
   ) {}
   get connected(): boolean {
     return this.active;
+  }
+  get foreground(): boolean {
+    return this.active && this.inForeground;
   }
   connect(): Promise<void> {
     if (this.active) return Promise.resolve();
@@ -101,10 +110,7 @@ export class GlassesDisplay {
       // A stopped queue may still have an in-flight native image call. Drain it
       // before rebuilding the page so a reconnect never overlaps image sends.
       this.queue?.stop();
-      if (this.motion) {
-        this.closingMotion = this.motion.close();
-        this.motion = null;
-      }
+      this.closeMotion();
       await withTimeout(
         Promise.all([this.queue?.idle(), this.closingMotion]),
         4000,
@@ -171,6 +177,7 @@ export class GlassesDisplay {
         if (
           event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT
         ) {
+          this.inForeground = true;
           this.pixels = [];
           // A transfer already in flight must not acknowledge this refresh.
           this.refreshRequested++;
@@ -180,6 +187,10 @@ export class GlassesDisplay {
         if (
           event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT
         ) {
+          this.inForeground = false;
+          // Invalidate both the in-flight transfer and any waiting snapshot.
+          // Their late results must not stop or acknowledge the resumed session.
+          this.foregroundRevision++;
           void this.setMotionEnabled(false).catch((error) =>
             this.onStatus(String(error)),
           );
@@ -238,13 +249,18 @@ export class GlassesDisplay {
         .catch(() => {});
       if (generation !== this.generation) return;
       this.active = true;
+      this.inForeground = true;
       this.queue?.stop();
       this.queue = new LatestFrameQueue(
         (frame) => {
           this.sendingImage = frame.image;
-          return this.send(frame, generation).finally(() => {
-            this.sendingImage = null;
-          });
+          return this.send(frame, generation)
+            .catch((error) => {
+              if (this.canSend(generation, frame.foregroundRevision)) throw error;
+            })
+            .finally(() => {
+              this.sendingImage = null;
+            });
         },
         (error) => {
           if (generation !== this.generation) return;
@@ -269,6 +285,8 @@ export class GlassesDisplay {
         throw new Error("Connect G2 before starting its motion sensor.");
       return;
     }
+    if (enabled && !this.inForeground)
+      throw new Error("Return to the G2 foreground before starting its motion sensor.");
     await this.motion.setEnabled(enabled);
   }
   async location(): Promise<Location | null> {
@@ -290,7 +308,7 @@ export class GlassesDisplay {
     return validLocation(location) ? location : null;
   }
   submit(frame: GlassesFrame): void {
-    if (!this.active || !this.queue) return;
+    if (!this.foreground || !this.queue) return;
     // Preserve a refresh request even if a newer sensor frame replaces the
     // waiting frame while the native transfer is busy.
     if (frame.force) this.refreshRequested++;
@@ -304,9 +322,13 @@ export class GlassesDisplay {
     const context = image.getContext("2d")!;
     context.clearRect(0, 0, MAP_WIDTH, DISPLAY_HEIGHT);
     context.drawImage(frame.image, 0, 0);
-    this.queue.submit({ ...frame, image });
+    this.queue.submit({ image, foregroundRevision: this.foregroundRevision });
   }
-  private async send(frame: GlassesFrame, generation: number): Promise<void> {
+  private canSend(generation: number, foregroundRevision: number): boolean {
+    return this.foreground && generation === this.generation &&
+      foregroundRevision === this.foregroundRevision;
+  }
+  private async send(frame: QueuedFrame, generation: number): Promise<void> {
     const bridge = this.bridge!;
     const refresh = this.refreshRequested;
     const force = refresh !== this.refreshSent;
@@ -315,7 +337,7 @@ export class GlassesDisplay {
     const tile = this.tile ??= createCanvas(TILE_WIDTH, TILE_HEIGHT);
     const context = tile.getContext("2d")!;
     for (let i = 0; i < 4; i++) {
-      if (!this.active || generation !== this.generation) return;
+      if (!this.canSend(generation, frame.foregroundRevision)) return;
       context.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
       context.drawImage(
         frame.image,
@@ -336,7 +358,7 @@ export class GlassesDisplay {
       )
         continue;
       const imageData = await pngBytes(tile);
-      if (!this.active || generation !== this.generation) return;
+      if (!this.canSend(generation, frame.foregroundRevision)) return;
       const result = await bridge.updateImageRawData(
         new ImageRawDataUpdate({
           containerID: 2 + i,
@@ -344,12 +366,13 @@ export class GlassesDisplay {
           imageData,
         }),
       );
+      if (!this.canSend(generation, frame.foregroundRevision)) return;
       if (result !== ImageRawDataUpdateResult.success)
         throw new Error(`Could not send the sky map (${result}).`);
       cachedPixels[i] = pixels;
     }
     // This acknowledgement confirms acceptance by the host, not optical delivery.
-    if (this.active && generation === this.generation) {
+    if (this.canSend(generation, frame.foregroundRevision)) {
       this.refreshSent = refresh;
       this.hooks.onFrameSent?.(performance.now() - startedAt);
       this.onStatus("Sky map sent to G2.");
@@ -358,17 +381,21 @@ export class GlassesDisplay {
   stop(): void {
     this.generation++;
     this.active = false;
+    this.inForeground = false;
     this.queue?.stop();
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.unsubscribeDevice?.();
     this.unsubscribeDevice = null;
+    this.closeMotion();
+    this.hooks.onMotionStopped?.();
+  }
+  private closeMotion(): void {
     if (this.motion) {
       this.closingMotion = this.motion.close().catch(() => {
         // The link may already be gone. Reconnection creates a fresh sensor session.
       });
       this.motion = null;
     }
-    this.hooks.onMotionStopped?.();
   }
 }

@@ -27,48 +27,54 @@ const sampleLocation: Location = {
   longitude: 139.7671,
   height: 0,
 };
-let location: Location | null = null;
-let timeMode: TimeMode = "now";
-let selectedTime = new Date();
-let rawHeading = 180;
-let phoneMode = false;
-let phoneReceivedAt = 0;
-let compassGeneration = 0;
-let sky: Sky | null = null;
-let skyKey = "";
-let renderRequested = false;
-let renderTimer: number | undefined;
-let renderAnimation: number | undefined;
-let lastRender = -Infinity;
-let forceGlassesSend = false;
-let lastGlassesSend = 0;
-let lastGlassesKey = "";
-let sendTimer: number | undefined;
-let locationGeneration = 0;
-let disposed = false;
-let physicalDay = "";
-let declination: number | null = null;
+const observing = {
+  location: null as Location | null,
+  locationGeneration: 0,
+  timeMode: "now" as TimeMode,
+  time: new Date(),
+  heading: 180,
+};
+const phoneState = { enabled: false, receivedAt: 0, generation: 0 };
+const skyCache = {
+  value: null as Sky | null,
+  key: "",
+  physicalDay: "",
+  declination: null as number | null,
+};
+const renderState = {
+  requested: false,
+  timer: undefined as number | undefined,
+  animation: undefined as number | undefined,
+  lastRender: -Infinity,
+  disposed: false,
+};
+const delivery = {
+  force: false,
+  lastSent: 0,
+  key: "",
+  timer: undefined as number | undefined,
+};
 const phone = new PhoneCompass();
 const glasses = new GlassesDisplay(
   (status) => text("bridge-status", status),
   (gesture) => {
     if (gesture === "tap" && head.enabled && !head.active) head.captureNext();
     else if (gesture === "tap")
-      setTimeMode(timeMode === "now" ? "tonight" : "now");
+      setTimeMode(observing.timeMode === "now" ? "tonight" : "now");
     else {
       if (head.controlsYaw) void head.stop();
       manualMode();
-      setHeading(rawHeading + (gesture === "left" ? -15 : 15));
+      setHeading(observing.heading + (gesture === "left" ? -15 : 15));
     }
   },
   {
     onConnected: () => {
-      lastGlassesKey = "";
-      lastGlassesSend = -Infinity;
+      delivery.key = "";
+      delivery.lastSent = -Infinity;
       requestRender();
     },
     onForeground: () => {
-      forceGlassesSend = true;
+      delivery.force = true;
       requestRender();
     },
     onMotion: (sample, receivedAt) => head.receive(sample, receivedAt),
@@ -78,7 +84,7 @@ const glasses = new GlassesDisplay(
 );
 const head = new HeadControls(
   glasses,
-  () => ({ heading: rawHeading, pitch: Number(input("pitch").value) }),
+  () => ({ heading: observing.heading, pitch: Number(input("pitch").value) }),
   requestRender,
   () => {
     // Preserve the last view when stopping, changing format, or recalibrating.
@@ -95,14 +101,14 @@ function localInput(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 function setTimeMode(mode: TimeMode): void {
-  timeMode = mode;
+  observing.timeMode = mode;
   if (mode === "now") {
-    selectedTime = new Date();
+    observing.time = new Date();
     text("time-note", "The sky updates automatically to the current time.");
   }
   if (mode === "tonight") {
-    const night = tonight(new Date(), location || sampleLocation);
-    selectedTime = night.time;
+    const night = tonight(new Date(), observing.location || sampleLocation);
+    observing.time = night.time;
     text("time-note", `${night.note} The selected sky time stays fixed.`);
   }
   if (mode === "custom")
@@ -111,19 +117,19 @@ function setTimeMode(mode: TimeMode): void {
       "Showing the selected time, which may differ from the current sky.",
     );
   for (const id of ["now", "tonight", "custom"]) pressed(id, mode === id);
-  input("date").value = localInput(selectedTime);
+  input("date").value = localInput(observing.time);
   requestRender();
 }
 function setHeading(degrees: number): void {
-  rawHeading = wrap(degrees);
-  input("heading").value = String(Math.round(rawHeading) % 360);
+  observing.heading = wrap(degrees);
+  input("heading").value = String(Math.round(observing.heading) % 360);
   requestRender();
 }
 function manualMode(): void {
-  compassGeneration++;
+  phoneState.generation++;
   phone.stop();
-  phoneMode = false;
-  phoneReceivedAt = 0;
+  phoneState.enabled = false;
+  phoneState.receivedAt = 0;
   pressed("manual-mode", true);
   pressed("phone-mode", false);
   input("heading").disabled = false;
@@ -133,79 +139,82 @@ function manualMode(): void {
 function setLocation(value: Location, label: string): void {
   if (!validLocation(value))
     throw new Error("Check the latitude, longitude, and elevation.");
-  location = value;
-  physicalDay = "";
+  observing.location = value;
+  skyCache.physicalDay = "";
   input("latitude").value = String(value.latitude);
   input("longitude").value = String(value.longitude);
   text("location-status", label);
-  if (timeMode === "tonight") setTimeMode("tonight");
+  if (observing.timeMode === "tonight") setTimeMode("tonight");
   requestRender();
 }
 function requestRender(): void {
-  if (renderRequested || disposed) return;
-  renderRequested = true;
+  if (renderState.requested || renderState.disposed) return;
+  renderState.requested = true;
   const flush = () => {
-    if (!renderRequested || disposed) return;
-    clearTimeout(renderTimer);
-    if (renderAnimation !== undefined) cancelAnimationFrame(renderAnimation);
-    renderTimer = renderAnimation = undefined;
+    if (!renderState.requested || renderState.disposed) return;
+    clearTimeout(renderState.timer);
+    if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
+    renderState.timer = renderState.animation = undefined;
     const now = performance.now();
-    const wait = head.active ? 100 - (now - lastRender) : 0;
+    const wait = head.active ? 100 - (now - renderState.lastRender) : 0;
     if (wait > 0) {
-      renderTimer = window.setTimeout(flush, wait);
+      renderState.timer = window.setTimeout(flush, wait);
       return;
     }
-    renderRequested = false;
-    lastRender = now;
+    renderState.requested = false;
+    renderState.lastRender = now;
     render();
   };
   // Even's WebView can suspend animation frames while G2 is still in use.
   // SDK-backed timers let display updates continue when the host keeps JS alive.
-  renderTimer = window.setTimeout(flush, 50);
-  renderAnimation = requestAnimationFrame(flush);
+  renderState.timer = window.setTimeout(flush, 50);
+  renderState.animation = requestAnimationFrame(flush);
 }
-function render(): void {
-  const now = new Date();
-  const monotonicNow = performance.now();
-  head.refresh(monotonicNow);
-  if (timeMode === "now") {
-    selectedTime = now;
-    if (document.activeElement !== input("date"))
-      input("date").value = localInput(selectedTime);
-  }
-  const place = location || sampleLocation;
-  const key = `${Math.floor(selectedTime.getTime() / 15000)}:${place.latitude}:${place.longitude}:${place.height}`;
-  if (!sky || key !== skyKey) {
-    sky = calculateSky(selectedTime, place);
-    skyKey = key;
+function currentSky(now: Date): Sky {
+  if (observing.timeMode === "now") observing.time = now;
+  const place = observing.location || sampleLocation;
+  const key = `${Math.floor(observing.time.getTime() / 15000)}:${place.latitude}:${place.longitude}:${place.height}`;
+  if (!skyCache.value || key !== skyCache.key) {
+    skyCache.value = calculateSky(observing.time, place);
+    skyCache.key = key;
   }
   // A simulated future sky does not change today's physical magnetic field.
-  if (physicalDay !== now.toDateString()) {
-    physicalDay = now.toDateString();
-    declination = magneticDeclination(place, now);
+  if (skyCache.physicalDay !== now.toDateString()) {
+    skyCache.physicalDay = now.toDateString();
+    skyCache.declination = magneticDeclination(place, now);
   }
-  const heading = trueHeading(
-    {
-      heading: head.pose?.heading ?? rawHeading,
-      reference: input("north-reference").value as NorthReference,
-    },
-    declination,
-    Number(input("offset").value),
-  );
-  const pitch = head.pose?.pitch ?? Number(input("pitch").value);
+  return skyCache.value;
+}
+function updateControls(): void {
+  if (observing.timeMode === "now" && document.activeElement !== input("date"))
+    input("date").value = localInput(observing.time);
   const calibrating = head.enabled && head.tracker.phase !== "neutral";
   input("pitch").disabled = head.pose != null || calibrating;
   input("heading").disabled =
-    phoneMode || (head.controlsYaw && (calibrating || head.pose != null));
+    phoneState.enabled || (head.controlsYaw && (calibrating || head.pose != null));
   element<HTMLButtonElement>("phone-mode").disabled = head.controlsYaw;
-  input("north-reference").disabled = phoneMode;
+  input("north-reference").disabled = phoneState.enabled;
   for (const button of document.querySelectorAll<HTMLButtonElement>(
     "[data-heading]",
   ))
     button.disabled = head.controlsYaw && (calibrating || head.pose != null);
+}
+function render(): void {
+  const monotonicNow = performance.now();
+  head.refresh(monotonicNow);
+  const sky = currentSky(new Date());
+  updateControls();
+  const heading = trueHeading(
+    {
+      heading: head.pose?.heading ?? observing.heading,
+      reference: input("north-reference").value as NorthReference,
+    },
+    skyCache.declination,
+    Number(input("offset").value),
+  );
   const options = {
-    heading: heading ?? rawHeading,
-    pitch,
+    heading: heading ?? observing.heading,
+    pitch: head.pose?.pitch ?? Number(input("pitch").value),
     fov: Number(input("fov").value),
     magnitude: Number(input("magnitude").value),
     lines: input("lines").checked,
@@ -215,8 +224,8 @@ function render(): void {
     fullSky: input("full-sky").checked,
     showInfo: input("sky-info").checked,
   };
-  const headingSource = phoneMode
-    ? Date.now() - phoneReceivedAt <= HEADING_TIMEOUT_MS
+  const headingSource = phoneState.enabled
+    ? Date.now() - phoneState.receivedAt <= HEADING_TIMEOUT_MS
       ? "Phone"
       : "Phone: waiting"
     : "Manual";
@@ -228,17 +237,17 @@ function render(): void {
         : `${headingSource} + head tilt`
     : headingSource;
   const { header, footer } = renderView(canvas, sky, options, {
-    time: selectedTime,
-    timeMode,
-    location,
-    rawHeading: head.pose?.heading ?? rawHeading,
+    time: observing.time,
+    timeMode: observing.timeMode,
+    location: observing.location,
+    rawHeading: head.pose?.heading ?? observing.heading,
     heading,
     headingSource: source,
-    declination,
+    declination: skyCache.declination,
     footerOverride: head.glassesHint,
   }, display);
   const frameKey = JSON.stringify([
-    skyKey,
+    skyCache.key,
     Math.round(options.heading * 5) / 5,
     Math.round(options.pitch * 5) / 5,
     options.fov,
@@ -250,35 +259,40 @@ function render(): void {
     header,
     footer,
   ]);
+  updateGlasses(frameKey, heading, monotonicNow);
+}
+function updateGlasses(frameKey: string, heading: number | null, now: number): void {
   text(
     "preview-status",
-    !location
+    !observing.location
       ? "Preview only. Choose your observing location below to apply these options to G2."
       : !glasses.connected
         ? "Preview only. Connect G2 to apply these options to your glasses."
         : heading == null
           ? "G2 updates paused. Check the north reference below."
-          : "Options apply to this preview and G2. Allow a few seconds for the glasses to update.",
+          : !glasses.foreground
+            ? "G2 updates paused while the app is in the background. Return to the G2 foreground to resume."
+            : "Options apply to this preview and G2. Allow a few seconds for the glasses to update.",
   );
   element<HTMLButtonElement>("refresh-display").disabled =
-    !location || heading == null;
+    !observing.location || heading == null;
   if (
-    glasses.connected &&
-    location &&
+    glasses.foreground &&
+    observing.location &&
     heading != null &&
-    (forceGlassesSend || frameKey !== lastGlassesKey)
+    (delivery.force || frameKey !== delivery.key)
   ) {
-    const wait = (head.active ? 100 : 300) - (monotonicNow - lastGlassesSend);
+    const wait = (head.active ? 100 : 300) - (now - delivery.lastSent);
     if (wait <= 0) {
-      clearTimeout(sendTimer);
-      sendTimer = undefined;
-      lastGlassesSend = monotonicNow;
-      lastGlassesKey = frameKey;
-      glasses.submit({ image: canvas, force: forceGlassesSend });
-      forceGlassesSend = false;
-    } else if (sendTimer === undefined) {
-      sendTimer = window.setTimeout(() => {
-        sendTimer = undefined;
+      clearTimeout(delivery.timer);
+      delivery.timer = undefined;
+      delivery.lastSent = now;
+      delivery.key = frameKey;
+      glasses.submit({ image: canvas, force: delivery.force });
+      delivery.force = false;
+    } else if (delivery.timer === undefined) {
+      delivery.timer = window.setTimeout(() => {
+        delivery.timer = undefined;
         requestRender();
       }, wait);
     }
@@ -290,38 +304,38 @@ element("manual-mode").onclick = () => {
   manualMode();
 };
 element("phone-mode").onclick = async () => {
-  const generation = ++compassGeneration;
-  phoneReceivedAt = 0;
+  const generation = ++phoneState.generation;
+  phoneState.receivedAt = 0;
   try {
     await phone.start(
       (sample) => {
-        if (generation !== compassGeneration) return;
-        const next = phoneReceivedAt
-          ? smoothHeading(rawHeading, sample.heading)
+        if (generation !== phoneState.generation) return;
+        const next = phoneState.receivedAt
+          ? smoothHeading(observing.heading, sample.heading)
           : sample.heading;
-        phoneReceivedAt = Date.now();
+        phoneState.receivedAt = Date.now();
         input("north-reference").value = sample.reference;
         setHeading(next);
       },
       (status) => {
-        if (generation === compassGeneration) {
+        if (generation === phoneState.generation) {
           text("compass-status", status);
           requestRender();
         }
       },
       (status) => {
-        if (generation !== compassGeneration) return;
+        if (generation !== phoneState.generation) return;
         manualMode();
         text("compass-status", status);
       },
     );
-    if (generation !== compassGeneration) return;
-    phoneMode = true;
+    if (generation !== phoneState.generation) return;
+    phoneState.enabled = true;
     pressed("manual-mode", false);
     pressed("phone-mode", true);
     input("heading").disabled = true;
   } catch (error) {
-    if (generation !== compassGeneration) return;
+    if (generation !== phoneState.generation) return;
     manualMode();
     text(
       "compass-status",
@@ -359,7 +373,7 @@ input("date").onchange = () => {
     text("time-note", "Choose a valid date and time.");
     return;
   }
-  selectedTime = date;
+  observing.time = date;
   setTimeMode("custom");
 };
 for (const [id, step] of [
@@ -367,12 +381,12 @@ for (const [id, step] of [
   ["later", 1],
 ] as const)
   element(id).onclick = () => {
-    selectedTime = new Date(selectedTime.getTime() + step * 3600000);
+    observing.time = new Date(observing.time.getTime() + step * 3600000);
     setTimeMode("custom");
   };
 element<HTMLFormElement>("location-form").onsubmit = (event) => {
   event.preventDefault();
-  locationGeneration++;
+  observing.locationGeneration++;
   try {
     setLocation(
       {
@@ -387,7 +401,7 @@ element<HTMLFormElement>("location-form").onsubmit = (event) => {
   }
 };
 element("locate").onclick = async () => {
-  const generation = ++locationGeneration;
+  const generation = ++observing.locationGeneration;
   const button = element<HTMLButtonElement>("locate");
   button.disabled = true;
   text("location-status", "Finding your location…");
@@ -412,13 +426,13 @@ element("locate").onclick = async () => {
         height: position.coords.altitude ?? 0,
       };
     }
-    if (generation === locationGeneration)
+    if (generation === observing.locationGeneration)
       setLocation(
         fix,
         "Using your current location. Update it again after moving.",
       );
   } catch {
-    if (generation === locationGeneration)
+    if (generation === observing.locationGeneration)
       text(
         "location-status",
         "Unable to get your location. Check location permission or enter latitude and longitude.",
@@ -432,10 +446,10 @@ async function connect(): Promise<void> {
   button.disabled = true;
   try {
     await glasses.connect();
-    forceGlassesSend = true;
-    lastGlassesKey = "";
-    lastGlassesSend = 0;
-    if (!location)
+    delivery.force = true;
+    delivery.key = "";
+    delivery.lastSent = 0;
+    if (!observing.location)
       text(
         "location-status",
         "Set your observing location to start displaying the sky on G2.",
@@ -465,11 +479,11 @@ text("app-version", `v${version}`);
 setTimeMode("now");
 const timer = window.setInterval(requestRender, 1000);
 window.addEventListener("pagehide", () => {
-  disposed = true;
+  renderState.disposed = true;
   clearInterval(timer);
-  clearTimeout(sendTimer);
-  clearTimeout(renderTimer);
-  if (renderAnimation !== undefined) cancelAnimationFrame(renderAnimation);
+  clearTimeout(delivery.timer);
+  clearTimeout(renderState.timer);
+  if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
   phone.stop();
   glasses.stop();
 });

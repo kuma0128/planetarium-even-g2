@@ -4,7 +4,8 @@ export const element = <T extends HTMLElement = HTMLElement>(id: string) =>
 export const input = (id: string) => element<HTMLInputElement>(id);
 
 export function text(id: string, value: string): void {
-  element(id).textContent = value;
+  const target = element(id);
+  if (target.textContent !== value) target.textContent = value;
 }
 
 export function pressed(id: string, value: boolean): void {

@@ -1,5 +1,16 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    // These tests supply sensor readings explicitly. Chromium can also emit a
+    // native all-null reading, which must not race the synthetic tilt/status.
+    for (const type of ["deviceorientation", "deviceorientationabsolute"])
+      window.addEventListener(type, event => {
+        if (event.isTrusted) event.stopImmediatePropagation();
+      }, true);
+  });
+});
+
 test("An Even view without compass readings returns to usable manual controls", async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(window, {
