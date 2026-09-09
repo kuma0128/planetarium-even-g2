@@ -10,7 +10,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:browser": "playwright test",
-    "pack": "npm run build && evenhub pack app.json dist --sdk-ver 0.0.15 -o g2-planetarium.ehpk"
+    "pack": "npm run build && node scripts/pack.mjs"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.15",

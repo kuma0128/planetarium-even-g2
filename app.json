@@ -3,7 +3,6 @@
   "edition": "202601",
   "name": "G2 Planetarium",
   "version": "0.1.2",
-  "min_sdk_version": "0.0.15",
   "entrypoint": "index.html",
   "permissions": [
     {

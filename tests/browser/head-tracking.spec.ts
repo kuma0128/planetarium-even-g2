@@ -10,11 +10,18 @@ type Host = {
   failMotion: boolean;
   blockImages: boolean;
   blockMotionStop: boolean;
+  deviceInfo: { model: string; sn: string } | null;
+  failDeviceInfo: boolean;
+  blockDeviceInfo: boolean;
+  releaseDeviceInfo: () => void;
+  locationResult: "success" | "null" | "failure" | "pending";
   releaseImage: () => void;
   releaseMotionStop: () => void;
   motion: boolean;
   omitZeroAxes: boolean;
   images: Record<number, number[] | string>;
+  captureFrames: boolean;
+  capturedFrames: Record<number, number[] | string>[];
   drawnText: string[];
   renderTimes: number[];
   sharedLog?: string;
@@ -28,8 +35,11 @@ declare global {
   }
 }
 
-async function host(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+async function host(
+  page: Page,
+  options: Partial<Pick<Host, "deviceInfo" | "failDeviceInfo" | "blockDeviceInfo" | "locationResult">> = {},
+): Promise<void> {
+  await page.addInitScript((options) => {
     const state: Host = (window.__g2Test = {
       calls: [],
       imageDelay: 80,
@@ -39,11 +49,18 @@ async function host(page: Page): Promise<void> {
       failMotion: false,
       blockImages: false,
       blockMotionStop: false,
+      deviceInfo: { model: "g2", sn: "test-g2" },
+      failDeviceInfo: false,
+      blockDeviceInfo: false,
+      releaseDeviceInfo: () => {},
+      locationResult: "null",
       releaseImage: () => {},
       releaseMotionStop: () => {},
       motion: false,
       omitZeroAxes: false,
       images: {},
+      captureFrames: false,
+      capturedFrames: [],
       drawnText: [],
       renderTimes: [],
       downloadAttempts: 0,
@@ -55,6 +72,7 @@ async function host(page: Page): Promise<void> {
               : sample } },
           }),
         ),
+      ...options,
     });
     const fillText = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (...args) {
@@ -82,8 +100,20 @@ async function host(page: Page): Promise<void> {
                 : data,
           });
           if (method === "createStartUpPageContainer") return 0;
-          if (method === "getGlassesInfo")
-            return { model: "g2", sn: "test-g2" };
+          if (method === "getGlassesInfo") {
+            if (state.failDeviceInfo) throw new Error("Device info unavailable");
+            const info = state.deviceInfo;
+            if (state.blockDeviceInfo)
+              await new Promise<void>(resolve => { state.releaseDeviceInfo = resolve; });
+            return info;
+          }
+          if (method === "getAppLocation") {
+            if (state.locationResult === "failure") throw new Error("Host location unavailable");
+            if (state.locationResult === "pending") return new Promise(() => {});
+            return state.locationResult === "success"
+              ? { latitude: 51.5, longitude: -0.12, altitude: 35 }
+              : null;
+          }
           if (method === "imuControl") {
             if (state.failMotion && data.iMUReportEn === 1) return false;
             if (state.blockMotionStop && data.iMUReportEn === 0)
@@ -104,13 +134,15 @@ async function host(page: Page): Promise<void> {
             );
             state.imageInFlight--;
             if (!state.failImages) state.images[data.containerID] = data.imageData;
+            if (!state.failImages && state.captureFrames && data.containerID === 5)
+              state.capturedFrames.push({ ...state.images });
             return state.failImages ? 1 : 0;
           }
           return true;
         },
       },
     });
-  });
+  }, options);
 }
 
 async function hold(page: Page, sample: Sample): Promise<void> {
@@ -296,6 +328,85 @@ test("Refresh G2 display resends all unchanged tiles and preview-only states exp
   await expect.poll(() => page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length)).toBeGreaterThanOrEqual(before + 4);
   await expectDeliveredFrame(page);
   expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
+});
+
+for (const busy of [false, true]) {
+  test(`Returning to the G2 foreground restores unchanged tiles with a transfer ${busy ? "in flight" : "idle"}`, async ({ page }) => {
+    await host(page);
+    await page.goto("/");
+    await page.locator("#date").fill("2026-01-15T21:00");
+    await page.locator("#date").press("Tab");
+    await page.locator("#location-form button").click();
+    await expectDeliveredFrame(page);
+    const before = await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length);
+    if (busy) {
+      await page.evaluate(() => { window.__g2Test.blockImages = true; });
+      await page.locator("#refresh-display").click();
+      await expect.poll(() => page.evaluate(() => window.__g2Test.imageInFlight)).toBe(1);
+    }
+    await page.evaluate(() => {
+      window.__g2Test.images = {};
+      window.dispatchEvent(new CustomEvent("evenHubEvent", {
+        detail: { sysEvent: { eventType: 4 } },
+      }));
+      window.__g2Test.blockImages = false;
+      window.__g2Test.releaseImage();
+    });
+    await expect.poll(() => page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length)).toBe(before + (busy ? 8 : 4));
+    await expectDeliveredFrame(page);
+    expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
+    expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
+    await expect(page.locator("#head-state")).toHaveText("Off");
+  });
+}
+
+test("New preview frames cannot overwrite a snapshot whose tiles are still being sent", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await range(page, "#pitch", "-90");
+  await page.locator("#location-form button").click();
+  await expectDeliveredFrame(page);
+  const original = await page.locator("#sky").evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL());
+  await page.evaluate(() => {
+    window.__g2Test.captureFrames = true;
+    window.__g2Test.blockImages = true;
+  });
+  await page.locator("#refresh-display").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.imageInFlight)).toBe(1);
+  await page.locator("#sky-info").check();
+  await expect(page.locator("#lens-header")).toContainText("Now");
+  await page.selectOption("#fov", "60");
+  await page.evaluate(() => {
+    window.__g2Test.blockImages = false;
+    window.__g2Test.releaseImage();
+  });
+  await expectDeliveredFrame(page);
+  // Every tile of the first forced frame must match the view before the edits.
+  expect(await page.evaluate(async (original) => {
+    const frame = window.__g2Test.capturedFrames[0];
+    if (!frame || Object.keys(frame).length !== 4) return false;
+    const canvas = document.createElement("canvas");
+    canvas.width = 576;
+    canvas.height = 288;
+    const ctx = canvas.getContext("2d")!;
+    const reference = new Image();
+    reference.src = original;
+    await reference.decode();
+    ctx.drawImage(reference, 0, 0);
+    const expected = ctx.getImageData(0, 0, 576, 288).data;
+    for (let i = 0; i < 4; i++) {
+      const bytes = frame[2 + i];
+      const data = typeof bytes === "string"
+        ? Uint8Array.from(atob(bytes), char => char.charCodeAt(0))
+        : new Uint8Array(bytes);
+      const image = await createImageBitmap(new Blob([data], { type: "image/png" }));
+      ctx.drawImage(image, (i % 2) * 288, Math.floor(i / 2) * 144);
+      image.close();
+    }
+    const actual = ctx.getImageData(0, 0, 576, 288).data;
+    return expected.every((byte, i) => byte === actual[i]);
+  }, original)).toBe(true);
+  expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
 });
 
 test("A sensor acknowledgement without readings cannot enable calibration and can be retried", async ({ page }) => {
@@ -572,6 +683,71 @@ test("Disconnect stops tracking and reconnect requires a new calibration", async
   await expect(page.locator("#head-up")).toBeDisabled();
 });
 
+for (const eventType of [6, 7]) {
+  test(`G2 exit event ${eventType} immediately stops the display and sensor`, async ({ page }) => {
+    await host(page);
+    await page.goto("/");
+    await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+    await page.locator("#head-start").click();
+    await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+    await page.evaluate(eventType => window.dispatchEvent(new CustomEvent("evenHubEvent", {
+      detail: { sysEvent: { eventType } },
+    })), eventType);
+    await expect(page.locator("#bridge-status")).toContainText("closed");
+    await expect(page.locator("#head-state")).toHaveText("Off");
+    await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(false);
+    await page.locator("#location-form button").click();
+    await expect(page.locator("#preview-status")).toContainText("Connect G2");
+    expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "updateImageRawData"))).toBe(false);
+    await page.locator("#connect").click();
+    await expectDeliveredFrame(page);
+  });
+}
+
+for (const info of ["pending", "null", "failure", "other-model"] as const) {
+  test(`Disconnect is detected when G2 device information is ${info}`, async ({ page }) => {
+    await host(page, {
+      blockDeviceInfo: info === "pending",
+      failDeviceInfo: info === "failure",
+      deviceInfo: info === "null" ? null : {
+        model: info === "other-model" ? "ring1" : "g2", sn: "test-g2",
+      },
+    });
+    await page.goto("/");
+    await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+    await page.locator("#head-start").click();
+    await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("deviceStatusChanged", {
+      detail: { sn: "test-g2", connectType: "disconnected" },
+    })));
+    await expect(page.locator("#bridge-status")).toContainText("disconnected");
+    await expect(page.locator("#head-state")).toHaveText("Off");
+    await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(false);
+    // A device-info response arriving after the disconnect must not revive it.
+    await page.evaluate(() => window.__g2Test.releaseDeviceInfo());
+    await page.locator("#location-form button").click();
+    await expect(page.locator("#preview-status")).toContainText("Connect G2");
+  });
+}
+
+test("A known G2 serial ignores other device disconnects but accepts its own connection failure", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  await page.locator("#head-start").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("deviceStatusChanged", {
+    detail: { sn: "test-ring", connectType: "disconnected" },
+  })));
+  await expect(page.locator("#head-stop")).toBeEnabled();
+  expect(await page.evaluate(() => window.__g2Test.motion)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("deviceStatusChanged", {
+    detail: { sn: "test-g2", connectType: "connectionFailed" },
+  })));
+  await expect(page.locator("#bridge-status")).toContainText("disconnected");
+  await expect(page.locator("#head-state")).toHaveText("Off");
+});
+
 for (const blocked of ["image", "motion"] as const) {
   test(`Reconnect times out a stalled ${blocked} call and can be retried after it settles`, async ({ page }) => {
     await host(page);
@@ -783,6 +959,55 @@ for (const outcome of ["success", "cancel", "failure", "unsupported"] as const) 
       await page.screenshot({ path: "artifacts/sensor-log-mobile.png", fullPage: true });
   });
 }
+
+for (const locationResult of ["success", "null", "failure", "pending"] as const) {
+  test(`Location lookup uses a browser fallback when the host result is ${locationResult}`, async ({ page }) => {
+    await host(page, { locationResult });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+        getCurrentPosition: (success: PositionCallback) => success({
+          coords: { latitude: 48.85, longitude: 2.35, altitude: null },
+        } as GeolocationPosition),
+      } });
+    });
+    await page.goto("/");
+    await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+    await page.locator("#locate").click();
+    if (locationResult === "pending") await expect(page.locator("#locate")).toBeDisabled();
+    await expect(page.locator("#location-status")).toContainText("Using your current location", { timeout: 11000 });
+    await expect(page.locator("#locate")).toBeEnabled();
+    await expect(page.locator("#latitude")).toHaveValue(locationResult === "success" ? "51.5" : "48.85");
+    await expect(page.locator("#longitude")).toHaveValue(locationResult === "success" ? "-0.12" : "2.35");
+    expect(await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "getAppLocation")?.data)).toMatchObject({
+      accuracy: "high", timeoutMs: 8000,
+    });
+  });
+}
+
+test("Location errors leave the button usable and manual coordinates can recover", async ({ page }) => {
+  await host(page, { locationResult: "failure" });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+      getCurrentPosition: (_success: PositionCallback, failure: PositionErrorCallback) =>
+        failure({ code: 1, message: "Permission denied" } as GeolocationPositionError),
+    } });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  await page.locator("#locate").click();
+  await expect(page.locator("#location-status")).toContainText("Unable to get your location");
+  await expect(page.locator("#locate")).toBeEnabled();
+  // Bypass browser constraint validation to exercise the submit handler's guard.
+  await page.locator("#latitude").fill("91");
+  await page.locator("#location-form").evaluate(form => form.dispatchEvent(new Event("submit", { cancelable: true })));
+  await expect(page.locator("#location-status")).toContainText("Check the latitude");
+  await page.locator("#latitude").fill("35");
+  await page.locator("#location-form button").click();
+  await expect(page.locator("#location-status")).toContainText("Using your selected observing location");
+  expect(errors).toEqual([]);
+});
 
 test("Mobile browser preview keeps manual controls and reports that no native host is present", async ({
   page,

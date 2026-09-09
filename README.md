@@ -50,13 +50,15 @@ Phone browsers need a secure context, normally HTTPS, for compass and location a
 
 ## Load on G2
 
-Requires G2, the **Even app 2.2.10 or later**, and Even Hub developer access. The SDK is pinned to `0.0.15`.
+Requires G2, the **Even app 2.2.10 or later**, and Even Hub developer access. The SDK version is pinned in `package.json`.
 
 ```bash
 npm run pack
 ```
 
 This creates `g2-planetarium.ehpk`, an Even Hub app package. Successful [GitHub Actions runs](https://github.com/kuma0128/planetarium-even-g2/actions/workflows/planetarium.yml) also provide it in the `g2-planetarium` artifact.
+
+`npm run pack` adds `min_sdk_version` to a temporary copy of `app.json` from the pinned SDK dependency and passes that version to the CLI. Sensor logs use the same dependency version.
 
 - **Local development:** follow the [official local-testing instructions](https://hub.evenrealities.com/docs/test/local-testing). Generate a development QR code with `npx evenhub qr --url http://YOUR_COMPUTER_IP:5173` and open it through the Even app's developer tools.
 - **Package testing:** upload the `.ehpk` for Private Testing in the Even Hub developer portal, then launch it from the Even app. See the [official packaging guide](https://hub.evenrealities.com/docs/ship/packaging).

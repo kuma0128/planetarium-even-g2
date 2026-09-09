@@ -8,6 +8,7 @@ import {
   type TimedMotionSample,
 } from "./head-tracking.ts";
 import type { GlassesDisplay } from "./glasses.ts";
+import { dependencies } from "../package.json";
 
 /** The live sensor session and calibration UI. No simulated input enters this path. */
 export class HeadControls {
@@ -130,7 +131,7 @@ export class HeadControls {
       await this.glasses.connect();
       if (generation !== this.generation) return;
       this.tracker.reset(this.config());
-      if (this.controlsYaw || this.tracker.config.format !== "gravity")
+      if (this.tracker.config.format !== "gravity")
         this.angleMode();
       this.samples = [];
       this.receivedCount = this.rejectedCount = 0;
@@ -298,7 +299,7 @@ export class HeadControls {
     const first = this.startedAt;
     const report = {
       version: 1,
-      sdk: "0.0.15",
+      sdk: dependencies["@evenrealities/even_hub_sdk"],
       config: this.tracker.config,
       phase: this.tracker.phase,
       lastPose: this.tracker.pose,

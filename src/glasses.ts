@@ -15,10 +15,18 @@ import {
 } from "@evenrealities/even_hub_sdk";
 import { LatestFrameQueue } from "./frame-queue.ts";
 import { MotionStream } from "./motion-stream.ts";
-import { DISPLAY_HEIGHT, MAP_HEIGHT, MAP_WIDTH, pngBytes } from "./render.ts";
+import { DISPLAY_HEIGHT, MAP_WIDTH, pngBytes } from "./render.ts";
 import { validLocation, type Location } from "./sky.ts";
 
 const TILE_WIDTH = MAP_WIDTH / 2;
+const TILE_HEIGHT = DISPLAY_HEIGHT / 2;
+
+function createCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
 
 async function withTimeout<T>(operation: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -47,6 +55,7 @@ export type GlassesFrame = {
 };
 export type GlassesHooks = {
   onConnected?: () => void;
+  onForeground?: () => void;
   onMotion?: (sample: unknown, receivedAt: number) => void;
   onMotionStopped?: () => void;
   onFrameSent?: (durationMs: number) => void;
@@ -59,6 +68,9 @@ export class GlassesDisplay {
   private motion: MotionStream | null = null;
   private closingMotion: Promise<void> = Promise.resolve();
   private pixels: (Uint8ClampedArray | undefined)[] = [];
+  private snapshots: HTMLCanvasElement[] = [];
+  private sendingImage: HTMLCanvasElement | null = null;
+  private tile: HTMLCanvasElement | null = null;
   private refreshRequested = 0;
   private refreshSent = 0;
   private connecting: Promise<void> | null = null;
@@ -132,9 +144,9 @@ export class GlassesDisplay {
               containerID: 2 + i,
               containerName: `sky-tile-${i}`,
               xPosition: (i % 2) * TILE_WIDTH,
-              yPosition: Math.floor(i / 2) * MAP_HEIGHT,
+              yPosition: Math.floor(i / 2) * TILE_HEIGHT,
               width: TILE_WIDTH,
-              height: MAP_HEIGHT,
+              height: TILE_HEIGHT,
               zOrderIndex: i + 1,
             }),
           ),
@@ -154,6 +166,15 @@ export class GlassesDisplay {
         if (event.sysEvent?.eventType === OsEventTypeList.IMU_DATA_REPORT) {
           if (this.motion?.accepting)
             this.hooks.onMotion?.(event.sysEvent.imuData, performance.now());
+          return;
+        }
+        if (
+          event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT
+        ) {
+          this.pixels = [];
+          // A transfer already in flight must not acknowledge this refresh.
+          this.refreshRequested++;
+          this.hooks.onForeground?.();
           return;
         }
         if (
@@ -177,9 +198,14 @@ export class GlassesDisplay {
             .catch((error) =>
               this.onStatus(`Could not open the exit dialog. ${String(error)}`),
             );
-        } else if (type === OsEventTypeList.SYSTEM_EXIT_EVENT) {
+        } else if (
+          type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
+          type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+        ) {
           this.stop();
-          this.onStatus("G2 display closed.");
+          this.onStatus(type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+            ? "G2 display closed unexpectedly. Reconnect to resume."
+            : "G2 display closed.");
         } else if (type === OsEventTypeList.SCROLL_TOP_EVENT)
           this.onGesture("left");
         else if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT)
@@ -187,17 +213,12 @@ export class GlassesDisplay {
       });
       this.unsubscribeDevice?.();
       let glassesSn: string | undefined;
-      void bridge
-        .getDeviceInfo()
-        .then((info) => {
-          if (info?.model === DeviceModel.G2) glassesSn = info.sn;
-        })
-        .catch(() => {});
       this.unsubscribeDevice = bridge.onDeviceStatusChanged((status) => {
+        // Status events have no model. Until the G2 SN is known, accept
+        // disconnects conservatively instead of missing a lost glasses link.
         if (
           generation !== this.generation ||
-          !glassesSn ||
-          status.sn !== glassesSn
+          (glassesSn && status.sn !== glassesSn)
         )
           return;
         if (
@@ -208,10 +229,23 @@ export class GlassesDisplay {
           this.onStatus("G2 disconnected. Reconnect to resume.");
         }
       });
+      void bridge
+        .getDeviceInfo()
+        .then((info) => {
+          if (generation !== this.generation) return;
+          if (info?.model === DeviceModel.G2) glassesSn = info.sn;
+        })
+        .catch(() => {});
+      if (generation !== this.generation) return;
       this.active = true;
       this.queue?.stop();
       this.queue = new LatestFrameQueue(
-        (frame) => this.send(frame, generation),
+        (frame) => {
+          this.sendingImage = frame.image;
+          return this.send(frame, generation).finally(() => {
+            this.sendingImage = null;
+          });
+        },
         (error) => {
           if (generation !== this.generation) return;
           this.stop();
@@ -239,10 +273,14 @@ export class GlassesDisplay {
   }
   async location(): Promise<Location | null> {
     if (!this.bridge) return null;
-    const fix = await this.bridge.getAppLocation({
-      accuracy: AppLocationAccuracy.High,
-      timeoutMs: 8000,
-    });
+    const fix = await withTimeout(
+      this.bridge.getAppLocation({
+        accuracy: AppLocationAccuracy.High,
+        timeoutMs: 8000,
+      }),
+      8000,
+      "The Even app did not return a location in time.",
+    );
     if (!fix) return null;
     const location = {
       latitude: fix.latitude,
@@ -252,59 +290,63 @@ export class GlassesDisplay {
     return validLocation(location) ? location : null;
   }
   submit(frame: GlassesFrame): void {
-    if (!this.active) return;
+    if (!this.active || !this.queue) return;
     // Preserve a refresh request even if a newer sensor frame replaces the
     // waiting frame while the native transfer is busy.
     if (frame.force) this.refreshRequested++;
-    // Snapshot before queueing; the preview canvas is reused by the next compass update.
-    const image = document.createElement("canvas");
-    image.width = MAP_WIDTH;
-    image.height = DISPLAY_HEIGHT;
-    image.getContext("2d")!.drawImage(frame.image, 0, 0);
-    this.queue?.submit({ ...frame, image });
+    // Keep the sending snapshot immutable and reuse the other buffer for the
+    // latest waiting frame. The preview can change during a native transfer.
+    let image = this.snapshots.find((canvas) => canvas !== this.sendingImage);
+    if (!image) {
+      image = createCanvas(MAP_WIDTH, DISPLAY_HEIGHT);
+      this.snapshots.push(image);
+    }
+    const context = image.getContext("2d")!;
+    context.clearRect(0, 0, MAP_WIDTH, DISPLAY_HEIGHT);
+    context.drawImage(frame.image, 0, 0);
+    this.queue.submit({ ...frame, image });
   }
   private async send(frame: GlassesFrame, generation: number): Promise<void> {
     const bridge = this.bridge!;
     const refresh = this.refreshRequested;
     const force = refresh !== this.refreshSent;
+    const cachedPixels = this.pixels;
     const startedAt = performance.now();
-    const tile = document.createElement("canvas");
-    tile.width = TILE_WIDTH;
-    tile.height = MAP_HEIGHT;
+    const tile = this.tile ??= createCanvas(TILE_WIDTH, TILE_HEIGHT);
+    const context = tile.getContext("2d")!;
     for (let i = 0; i < 4; i++) {
       if (!this.active || generation !== this.generation) return;
-      tile
-        .getContext("2d")!
-        .drawImage(
-          frame.image,
-          (i % 2) * TILE_WIDTH,
-          Math.floor(i / 2) * MAP_HEIGHT,
-          TILE_WIDTH,
-          MAP_HEIGHT,
-          0,
-          0,
-          TILE_WIDTH,
-          MAP_HEIGHT,
-        );
-      const pixels = tile
-        .getContext("2d")!
-        .getImageData(0, 0, TILE_WIDTH, MAP_HEIGHT).data;
-      const previous = this.pixels[i];
+      context.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
+      context.drawImage(
+        frame.image,
+        (i % 2) * TILE_WIDTH,
+        Math.floor(i / 2) * TILE_HEIGHT,
+        TILE_WIDTH,
+        TILE_HEIGHT,
+        0,
+        0,
+        TILE_WIDTH,
+        TILE_HEIGHT,
+      );
+      const pixels = context.getImageData(0, 0, TILE_WIDTH, TILE_HEIGHT).data;
+      const previous = cachedPixels[i];
       if (
         !force && previous &&
         samePixels(pixels, previous)
       )
         continue;
+      const imageData = await pngBytes(tile);
+      if (!this.active || generation !== this.generation) return;
       const result = await bridge.updateImageRawData(
         new ImageRawDataUpdate({
           containerID: 2 + i,
           containerName: `sky-tile-${i}`,
-          imageData: await pngBytes(tile),
+          imageData,
         }),
       );
       if (result !== ImageRawDataUpdateResult.success)
         throw new Error(`Could not send the sky map (${result}).`);
-      this.pixels[i] = pixels;
+      cachedPixels[i] = pixels;
     }
     // This acknowledgement confirms acceptance by the host, not optical delivery.
     if (this.active && generation === this.generation) {

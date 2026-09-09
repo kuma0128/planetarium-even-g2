@@ -67,6 +67,10 @@ const glasses = new GlassesDisplay(
       lastGlassesSend = -Infinity;
       requestRender();
     },
+    onForeground: () => {
+      forceGlassesSend = true;
+      requestRender();
+    },
     onMotion: (sample, receivedAt) => head.receive(sample, receivedAt),
     onMotionStopped: () => head.disconnected(),
     onFrameSent: (duration) => head.frameSent(duration),
@@ -369,14 +373,18 @@ for (const [id, step] of [
 element<HTMLFormElement>("location-form").onsubmit = (event) => {
   event.preventDefault();
   locationGeneration++;
-  setLocation(
-    {
-      latitude: Number(input("latitude").value),
-      longitude: Number(input("longitude").value),
-      height: 0,
-    },
-    "Using your selected observing location.",
-  );
+  try {
+    setLocation(
+      {
+        latitude: Number(input("latitude").value),
+        longitude: Number(input("longitude").value),
+        height: 0,
+      },
+      "Using your selected observing location.",
+    );
+  } catch (error) {
+    text("location-status", error instanceof Error ? error.message : String(error));
+  }
 };
 element("locate").onclick = async () => {
   const generation = ++locationGeneration;
@@ -384,7 +392,7 @@ element("locate").onclick = async () => {
   button.disabled = true;
   text("location-status", "Finding your location…");
   try {
-    let fix = await glasses.location();
+    let fix = await glasses.location().catch(() => null);
     if (!fix) {
       if (!navigator.geolocation)
         throw new Error(
