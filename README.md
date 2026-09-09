@@ -18,7 +18,7 @@ Set your viewing direction manually, then look up/down to follow head elevation 
 - **Compass alignment:** face a known direction and enter its heading manually. Choose magnetic or true north, with magnetic declination calculated for your location and today's date.
 - **Adjustable view:** change elevation, field of view, the star magnitude limit, and constellation lines. See the brightest named objects with their azimuth and altitude.
 - **Full-display planetarium:** the sky fills the entire 576 × 288 display by default. Date, direction/elevation numbers, Moon readouts, and star/direction labels start hidden. Enable the information and label options independently, or turn off full-display mode for the compact sky map. Temporary head-calibration instructions still appear during setup.
-- **G2 head tilt:** use **Use this direction as reference** to capture your forward view, then capture an upward tilt to start elevation tracking. **Align another direction** resets the reference without reconnecting the sensor. Sensor readings, sample rate, transfer timing, and a downloadable log help with real-device verification.
+- **G2 head tilt:** use **Use this direction as reference** to capture your forward view, then capture an upward tilt to start elevation tracking. **Align another direction** resets the reference without reconnecting the sensor. Pose capture averages steady readings and tolerates an isolated sensor glitch. Sensor readings, sample rate, unusable and ignored-acceleration counts, transfer timing, and a downloadable log with session events help with real-device verification.
 - **Head + touchpad controls:** look up/down to follow elevation; scroll the temple touchpad to browse left/right by 15 degrees per step without stopping head tracking. Scroll up moves left (heading −15°); scroll down moves right (heading +15°). R1 ring scrolling works too. Tap switches Now / Tonight, and double-tap opens the exit dialog.
 
 ## Run the browser preview
@@ -69,7 +69,7 @@ Device-status events identify devices only by serial number. Once the G2 serial 
 
 ## Align a direction and follow G2 head tilt
 
-The implementation uses stable gravity-like readings from the [official IMU API](https://hub.evenrealities.com/docs/build/device-apis#imu). Two poses recover elevation across sensor axes, signs, scale, and mounting angles. It is **not yet verified on physical G2 hardware**; the SDK does not specify the axes' units or coordinate convention.
+The implementation uses stable gravity-like readings from the [official IMU API](https://hub.evenrealities.com/docs/build/device-apis#imu). Two poses recover elevation across sensor axes, signs, scale, and mounting angles. A first real-device log (app 0.1.5, SDK 0.0.15) showed a vector with magnitude close to 1 at about 10 readings per second, with occasional near-zero dropout frames and short acceleration spikes; calibration reached tracking. The SDK does not specify the axes' units or coordinate convention, and elevation accuracy against the optical display is **still unverified**.
 
 1. Open the app through Even Hub, set your observing location, and wear the glasses.
 2. Face a known direction. Set **Compass heading**, its north reference, and **Elevation angle** to match your view. For example, use 90° for east with the correct magnetic/true north reference, and 0° for the horizon. Start between −60° and 60° elevation.
@@ -80,11 +80,22 @@ The implementation uses stable gravity-like readings from the [official IMU API]
 
 The reference button records the direction you supply; it does not measure north or enable left/right head tracking. Temple/ring scrolling changes the displayed heading and keeps it there until the next scroll or manual adjustment. Both scroll directions wrap across north (0°/360°). No recalibration is needed to browse the sky this way.
 
-Samples with a large magnitude change are ignored as possible acceleration. This cannot eliminate every movement artifact. Missing or unusable readings for 1.5 seconds freeze the last elevation and invalidate calibration; new readings alone never silently reactivate it. Disconnecting, leaving the **G2 foreground**, closing the page, or stopping also ends the sensor session. Hiding just the phone view does not stop tracking; continued updates depend on the Even host keeping JavaScript and the sensor stream alive.
+Samples whose magnitude differs from the calibrated gravity by more than 15% are ignored as possible acceleration and counted in the diagnostics. This cannot eliminate every movement artifact. Near-zero readings are dropout frames: they count as unusable and never enter calibration or tracking. Missing or unusable readings for 1.5 seconds freeze the last elevation and invalidate calibration; new readings alone never silently reactivate it. Disconnecting, leaving the **G2 foreground**, closing the page, or stopping also ends the sensor session. Hiding just the phone view does not stop tracking; continued updates depend on the Even host keeping JavaScript and the sensor stream alive.
 
-A successful sensor-start response alone does not prove that readings are arriving. **Waiting for sensor** keeps the reference button disabled until a sample arrives; capture requires at least four fresh, steady readings. The diagnostics show received and unusable message counts. Omitted zero-valued protobuf axes are decoded as zero; empty or invalid messages are rejected, and readings that share an arrival timestamp are kept.
+A successful sensor-start response alone does not prove that readings are arriving. **Waiting for sensor** keeps the reference button disabled until a sample arrives. A capture averages at least four fresh readings from the last 0.8 seconds and tolerates an isolated dropout or tap shock, at most one reading in four; a moving head still fails with a message. The diagnostics show received, unusable, and ignored-acceleration counts. Omitted zero-valued protobuf axes are decoded as zero; empty or invalid messages are rejected, and readings that share an arrival timestamp are kept.
 
-**Save or share sensor log** exports the last 600 raw samples with monotonic arrival times from session start, calibration markers, the captured reference, and the latest host-transfer duration as JSON. It opens file sharing when supported, otherwise requests a download. The same JSON remains visible with a **Copy sensor log** button; if clipboard access is unavailable, select and copy the text using your device's Copy command. Coordinates are not included, and the app does not automatically upload the log. `P100` is the selected SDK pacing code; it is not a claim of 100 Hz. The UI reports the observed arrival rate. While the G2 sensor is running, including during calibration, the app renders and requests display updates at most every 100 ms, keeps only the latest waiting frame, and skips unchanged tiles/captions. Real optical refresh rate and latency still need measurement on G2; host acceptance does not establish either.
+![G2 head tilt panel in the browser preview: tracking state, calibration reference, sensor details with counters, and the exported sensor log](docs/images/head-tilt-diagnostics.png)
+
+*G2 head tilt panel with sensor details and the exported log, captured in the browser preview with a mock host.*
+
+**Save or share sensor log** exports a JSON report (format version 3) and opens file sharing when supported, otherwise requests a download. The report contains:
+
+- the last 3,000 raw samples, about five minutes at 10 readings per second, with monotonic arrival times from sensor start; dropout frames carry `"unusable": true`;
+- calibration markers with the averaged gravity vector, the readings used and dropped, the second of readings before the tap, and for the upward pose the measured tilt angle and the recovered viewing axis;
+- session events with timestamps: sensor start, failed captures with their message and the readings they saw, pauses, realignment, and why the session ended (Stop, foreground exit, disconnect, or page hidden);
+- the captured reference, the last pose, whether the sensor was still running at export, message counts, and the latest host-transfer duration.
+
+The same JSON remains visible with a **Copy sensor log** button; if clipboard access is unavailable, select and copy the text using your device's Copy command. Coordinates are not included, and the app does not automatically upload the log. `P100` is the selected SDK pacing code; it is not a claim of 100 Hz. The UI reports the observed arrival rate. While the G2 sensor is running, including during calibration, the app renders and requests display updates at most every 100 ms, keeps only the latest waiting frame, and skips unchanged tiles/captions. Real optical refresh rate and latency still need measurement on G2; host acceptance does not establish either.
 
 ## Development
 
@@ -95,9 +106,15 @@ npm run test:browser
 npm run pack
 ```
 
-The automated tests cover astronomy and projection, magnetic correction and its polar blackout zone, manual heading correction, direction-reference calibration across axes and mounting angles, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, simultaneous head tilt and touchpad scrolling, north wrapping, stop/reconnect, slow frame transfers, retried tile rejections, render throttling during calibration, page restarts after pagehide, log export, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
+The automated tests cover astronomy and projection, magnetic correction and its polar blackout zone, manual heading correction, direction-reference calibration across axes and mounting angles, glitch-tolerant pose capture, dropout and acceleration counting, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, simultaneous head tilt and touchpad scrolling, north wrapping, stop/reconnect, slow frame transfers, retried tile rejections, render throttling during calibration, page restarts after pagehide, log export with session events and failed captures, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
 
 The browser preview supports desktop and mobile layouts.
+
+The README images are generated from the browser preview and the mock host, so they can be refreshed after UI changes:
+
+```bash
+DOCS_SCREENSHOTS=1 npx playwright test tests/browser/docs-screenshots.spec.ts
+```
 
 The display tests decode all four accepted PNG tiles and compare the complete
 frame with the browser canvas. They cover text removal, full/compact switching
@@ -109,8 +126,8 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 - `src/view.ts`: browser display, visible-object cards, and shared captions for the preview and G2.
 - `src/sky.ts`: Astronomy Engine calculations, HYG J2000 proper motion, precession and nutation, horizontal coordinates, great-circle constellation lines, and perspective projection.
 - `src/compass.ts`: magnetic declination and conversion of manually entered headings to true north.
-- `src/head-tracking.ts`: stable pose capture, gravity-based elevation, filtering, and stale-data invalidation.
-- `src/head-controls.ts`: live sensor controls, guided calibration, diagnostics, and local log export.
+- `src/head-tracking.ts`: glitch-tolerant pose capture, gravity-based elevation, acceleration filtering, and stale-data invalidation.
+- `src/head-controls.ts`: live sensor controls, guided calibration, diagnostics, the session event log, and local log export.
 - `src/motion-stream.ts`: serializes sensor start/stop calls, including rapid stop and reconnect.
 - `src/render.ts`: a 576 × 288 pixel display frame, with a full-height or compact 144-pixel sky viewport and optional captions/labels. Symbol sizes help identify objects; they do not reproduce apparent diameters or the shape of the Moon's phase.
 - `src/glasses.ts`: four 288 × 144 PNG tiles cover the G2 display. A blank text container behind the images captures gestures without reserving a visible text area. Every tile is sent sequentially through the official SDK; unchanged tiles are skipped, and a tile the host rejects is retried once before the session stops. Switching display options does not rebuild the page or interrupt head tracking.

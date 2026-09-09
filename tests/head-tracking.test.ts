@@ -4,6 +4,7 @@ import {
   HeadTracker,
   MOTION_TIMEOUT_MS,
   readMotionSample,
+  usableReading,
   type MotionSample,
 } from "../src/head-tracking.ts";
 
@@ -184,4 +185,51 @@ test("A new reference changes the elevation origin and requires both fresh poses
   assert.ok(Math.abs(tracker.pose!.pitch - 30) < 0.01);
   hold(tracker, gravity(10), 2100);
   assert.ok(Math.abs(tracker.pose!.pitch + 10) < 0.1);
+});
+
+test("Calibration tolerates isolated dropout and shock readings but not two among five", () => {
+  const tracker = new HeadTracker();
+  const glitches: Record<number, MotionSample> = {
+    300: { x: 0.0001, y: -0.0002, z: -0.0001 },
+    600: gravity(20, 0, 1.5),
+  };
+  for (let time = 100; time <= 900; time += 100)
+    tracker.receive(glitches[time] ?? gravity(20), time);
+  const forward = tracker.captureForward(20, 900);
+  assert.equal(tracker.phase, "up");
+  assert.deepEqual([forward.used, forward.dropped], [7, 2]);
+  assert.ok(Math.abs(forward.gravity.x - gravity(20).x) < 1e-9);
+  const up = tracker.captureUp(hold(tracker, gravity(50), 1000));
+  assert.equal(tracker.phase, "tracking");
+  assert.ok(Math.abs(up.tiltDeg! - 30) < 1e-6);
+  assert.deepEqual([up.used, up.dropped], [5, 0]);
+  // Tracking starts from the averaged upward pose, not the last single reading.
+  assert.ok(Math.abs(tracker.pose!.pitch - 50) < 1e-6);
+  hold(tracker, gravity(30), 1500);
+  assert.ok(Math.abs(tracker.pose!.pitch - 30) < 0.1);
+
+  tracker.reset();
+  const window: [number, MotionSample][] = [
+    [100, gravity(20)],
+    [200, { x: 0, y: 0, z: 0 }],
+    [300, gravity(20)],
+    [400, gravity(20, 0, 1.5)],
+    [500, gravity(20)],
+  ];
+  for (const [time, sample] of window) tracker.receive(sample, time);
+  assert.throws(() => tracker.captureForward(20, 500), /moving/);
+});
+
+test("Dropout frames are recognised and ignored acceleration is counted while tracking", () => {
+  assert.equal(usableReading({ x: 0.0001, y: -0.0002, z: -0.0001 }), false);
+  assert.equal(usableReading({ x: 0, y: 0, z: 0 }), false);
+  assert.equal(usableReading(gravity(0)), true);
+  assert.equal(usableReading({ x: 0, y: 0, z: 9.81 }), true);
+  const tracker = calibratedGravity();
+  assert.equal(tracker.ignored, 0);
+  tracker.receive(gravity(0, 0, 2), 1100);
+  tracker.receive(gravity(20), 1200);
+  assert.equal(tracker.ignored, 1);
+  tracker.reset();
+  assert.equal(tracker.ignored, 0);
 });

@@ -3,6 +3,8 @@ import {
   HeadTracker,
   MOTION_TIMEOUT_MS,
   readMotionSample,
+  usableReading,
+  type CaptureDetail,
   type TimedMotionSample,
 } from "./head-tracking.ts";
 import type { GlassesDisplay } from "./glasses.ts";
@@ -10,6 +12,17 @@ import type { NorthReference } from "./compass.ts";
 import { dependencies, version } from "../package.json";
 
 type HeadReference = { heading: number; pitch: number; northReference: NorthReference };
+/** A received reading. Dropout frames stay in the log but are marked unusable. */
+type LoggedSample = TimedMotionSample & { unusable?: true };
+type ExportedSample = { elapsedMs: number; x: number; y: number; z: number; unusable?: true };
+type SessionEvent = { time: number; event: string } & Record<string, unknown>;
+type Capture = { time: number; step: string; recent: ExportedSample[] } &
+  HeadReference &
+  CaptureDetail;
+/** About five minutes at the observed ten readings per second. */
+const SAMPLE_LIMIT = 3000;
+const CAPTURE_LIMIT = 100;
+const EVENT_LIMIT = 200;
 
 /** The live sensor session and calibration UI. No simulated input enters this path. */
 export class HeadControls {
@@ -18,19 +31,16 @@ export class HeadControls {
   private generation = 0;
   private busy = false;
   private startedAt = 0;
-  private samples: TimedMotionSample[] = [];
-  private captures: {
-    time: number;
-    step: string;
-    heading: number;
-    pitch: number;
-  }[] = [];
+  private samples: LoggedSample[] = [];
+  private captures: Capture[] = [];
+  private events: SessionEvent[] = [];
   private lastRefresh = -Infinity;
   private transferMs: number | null = null;
   private captureFailed = false;
   private exporting = false;
   private receivedCount = 0;
   private rejectedCount = 0;
+  private ignoredCount = 0;
   private referencePose: HeadReference | null = null;
   private status =
     "Start the G2 sensor, then calibrate while wearing your glasses.";
@@ -43,14 +53,15 @@ export class HeadControls {
     element("head-start").onclick = () => void this.start();
     element("head-stop").onclick = () => void this.stop();
     element("align-direction").onclick = () =>
-      this.capture("forward", () => {
+      this.capture("forward", (now) => {
         this.beforeReset();
         const reference = this.reference();
-        this.tracker.captureForward(reference.pitch, performance.now());
+        const detail = this.tracker.captureForward(reference.pitch, now);
         this.referencePose = reference;
+        return detail;
       });
     element("head-up").onclick = () =>
-      this.capture("up", () => this.tracker.captureUp(performance.now()));
+      this.capture("up", (now) => this.tracker.captureUp(now));
     element("head-realign").onclick = () => this.recalibrate();
     element("head-download").onclick = () => void this.download();
     element("head-copy").onclick = () => void this.copyLog();
@@ -91,20 +102,25 @@ export class HeadControls {
       this.changed();
       return;
     }
+    if (!usableReading(sample)) {
+      // A dropout frame: keep it in the log, out of calibration and tracking.
+      this.rejectedCount++;
+      this.record({ ...sample, time: now, unusable: true });
+      this.changed();
+      return;
+    }
     const phase = this.tracker.phase;
     const recovering = now - this.tracker.lastSampleAt > MOTION_TIMEOUT_MS;
+    const ignored = this.tracker.ignored;
     if (!this.tracker.accept(sample, now)) {
       // Only a clock running backwards is refused; keep received = kept + unusable.
       this.rejectedCount++;
       this.changed();
       return;
     }
-    this.samples.push({ ...sample, time: now });
-    if (this.samples.length > 600) this.samples.shift();
-    if (phase !== this.tracker.phase) {
-      this.captureFailed = false;
-      this.status = this.tracker.message;
-    } else if (recovering && !this.captureFailed)
+    if (this.tracker.ignored !== ignored) this.ignoredCount++;
+    this.record({ ...sample, time: now });
+    if (!this.settle(phase, now) && recovering && !this.captureFailed)
       this.status = this.tracker.message;
     this.changed();
   }
@@ -125,20 +141,23 @@ export class HeadControls {
       this.tracker.reset();
       this.referencePose = null;
       this.samples = [];
-      this.receivedCount = this.rejectedCount = 0;
       this.captures = [];
+      this.events = [];
+      this.receivedCount = this.rejectedCount = this.ignoredCount = 0;
       this.captureFailed = false;
       this.startedAt = performance.now();
       // Some hosts send their first sample before the start acknowledgement.
       this.enabled = true;
       await this.glasses.setMotionEnabled(true);
       if (generation !== this.generation) return;
+      this.note(performance.now(), "sensor-started");
       this.status = this.samples.length ? this.tracker.message
         : "Waiting for G2 readings. Face the selected heading and elevation, then select Use this direction as reference. Tracking starts after the upward tilt is also captured.";
     } catch (error) {
       if (generation !== this.generation) return;
       this.enabled = false;
       this.status = error instanceof Error ? error.message : String(error);
+      this.note(performance.now(), "sensor-start-failed", { message: this.status });
       await this.glasses.setMotionEnabled(false).catch(() => {});
     } finally {
       if (generation === this.generation) {
@@ -163,8 +182,10 @@ export class HeadControls {
 
   disconnected(
     message = "Motion session ended. Start the sensor and calibrate again.",
+    cause = "Stop selected",
   ): void {
     if (!this.enabled && !this.busy) return;
+    this.note(performance.now(), "ended", { cause, phase: this.tracker.phase });
     this.beforeReset();
     this.generation++;
     this.enabled = this.busy = false;
@@ -178,6 +199,7 @@ export class HeadControls {
 
   recalibrate(): void {
     if (!this.enabled || this.busy) return;
+    this.note(performance.now(), "realign", { phase: this.tracker.phase });
     this.beforeReset();
     this.tracker.reset();
     this.referencePose = null;
@@ -190,10 +212,7 @@ export class HeadControls {
   refresh(now: number, force = false): void {
     const phase = this.tracker.phase;
     this.tracker.expire(now);
-    if (phase !== this.tracker.phase) {
-      this.status = this.tracker.message;
-      this.captureFailed = false;
-    }
+    this.settle(phase, now);
     if (!force && now - this.lastRefresh < 100) return;
     this.lastRefresh = now;
     if (
@@ -241,7 +260,10 @@ export class HeadControls {
         ? "No frame sent yet"
         : `${Math.round(this.transferMs)} ms host transfer`,
     );
-    text("head-received", `${this.receivedCount} sensor messages · ${this.rejectedCount} unusable`);
+    text(
+      "head-received",
+      `${this.receivedCount} sensor messages · ${this.rejectedCount} unusable · ${this.ignoredCount} ignored as acceleration`,
+    );
     text(
       "head-raw",
       last
@@ -252,49 +274,87 @@ export class HeadControls {
       !this.samples.length || this.exporting;
   }
 
-  private capture(step: string, action: () => void): void {
+  /** Adopt the tracker's message after a phase change; log a pause nobody requested. */
+  private settle(before: HeadTracker["phase"], now: number): boolean {
+    if (before === this.tracker.phase) return false;
+    this.captureFailed = false;
+    this.status = this.tracker.message;
+    if (this.tracker.phase === "neutral")
+      this.note(now, "paused", { from: before, message: this.tracker.message });
+    return true;
+  }
+
+  private record(sample: LoggedSample): void {
+    this.samples.push(sample);
+    if (this.samples.length > SAMPLE_LIMIT) this.samples.shift();
+  }
+
+  private note(time: number, event: string, detail: Record<string, unknown> = {}): void {
+    this.events.push({ time, event, ...detail });
+    if (this.events.length > EVENT_LIMIT) this.events.shift();
+  }
+
+  private elapsed(time: number): number {
+    // Whole microseconds: performance.now() differences carry float noise.
+    return Math.round((time - this.startedAt) * 1000) / 1000;
+  }
+
+  private serialize({ time, ...sample }: LoggedSample): ExportedSample {
+    return { elapsedMs: this.elapsed(time), ...sample };
+  }
+
+  /** The second of readings before a tap, as the log shows them. */
+  private recent(now: number): ExportedSample[] {
+    return this.samples
+      .filter((s) => now - s.time <= 1000)
+      .map((s) => this.serialize(s));
+  }
+
+  private capture(step: string, action: (now: number) => CaptureDetail): void {
     if (!this.enabled) return;
+    const now = performance.now();
+    const recent = this.recent(now);
     try {
-      action();
+      const detail = action(now);
       this.captureFailed = false;
       this.status = this.tracker.message;
-      this.captures.push({
-        time: performance.now(),
-        step,
-        ...this.reference(),
-      });
-      if (this.captures.length > 100) this.captures.shift();
+      this.captures.push({ time: now, step, ...this.reference(), ...detail, recent });
+      if (this.captures.length > CAPTURE_LIMIT) this.captures.shift();
     } catch (error) {
       this.captureFailed = true;
       this.status = error instanceof Error ? error.message : String(error);
+      this.note(now, "capture-failed", { step, message: this.status, recent });
     }
-    this.refresh(performance.now(), true);
+    this.refresh(now, true);
     this.changed();
   }
 
   private async download(): Promise<void> {
     if (!this.samples.length || this.exporting) return;
-    const first = this.startedAt;
     const report = {
-      version: 2,
+      version: 3,
       appVersion: version,
       sdk: dependencies["@evenrealities/even_hub_sdk"],
       config: { format: "gravity" },
+      enabled: this.enabled,
+      exportedAtMs: this.elapsed(performance.now()),
       reference: this.referencePose,
       phase: this.tracker.phase,
       lastPose: this.tracker.pose,
       lastHostTransferMs: this.transferMs,
       receivedMessages: this.receivedCount,
       rejectedMessages: this.rejectedCount,
+      ignoredAsAcceleration: this.ignoredCount,
       captures: this.captures.map(({ time, ...capture }) => ({
-        elapsedMs: time - first,
+        elapsedMs: this.elapsed(time),
         ...capture,
       })),
-      note: "Raw, unverified G2 IMU axes. elapsedMs uses the browser's monotonic clock. Host transfer time is not optical latency. No location included.",
-      samples: this.samples.map(({ time, ...sample }) => ({
-        elapsedMs: time - first,
-        ...sample,
+      events: this.events.map(({ time, ...event }) => ({
+        elapsedMs: this.elapsed(time),
+        ...event,
       })),
+      note: "Raw, unverified G2 IMU axes. elapsedMs uses the browser's monotonic clock from sensor start. Readings marked unusable were logged but kept out of calibration and tracking. Host transfer time is not optical latency. No location included.",
+      samples: this.samples.map((sample) => this.serialize(sample)),
     };
     const json = JSON.stringify(report, null, 2);
     const filename = `g2-motion-${new Date().toISOString().replaceAll(":", "-")}.json`;

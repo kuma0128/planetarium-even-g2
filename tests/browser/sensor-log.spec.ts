@@ -18,16 +18,75 @@ test("Sensor log contains real-session samples and capture markers, with no loca
   const report = JSON.parse(Buffer.concat(chunks).toString());
   expect(JSON.parse(await page.locator("#head-log").inputValue())).toEqual(report);
   await expect(page.locator("#head-log")).toBeVisible();
+  expect(report.version).toBe(3);
+  expect(report.enabled).toBe(true);
+  expect(report.exportedAtMs).toBeGreaterThan(0);
   expect(report.samples.length).toBeGreaterThan(10);
+  expect(report.ignoredAsAcceleration).toBe(0);
   expect(report.captures.map((c: { step: string }) => c.step)).toEqual([
     "forward",
     "up",
   ]);
+  // Each marker keeps what the capture measured and the readings it saw.
+  const [forward, up] = report.captures;
+  expect(forward.used).toBeGreaterThanOrEqual(4);
+  expect(forward.dropped).toBe(0);
+  expect(forward.gravity.x).toBeCloseTo(Math.sin(Math.PI / 6), 3);
+  expect(forward.recent.length).toBeGreaterThanOrEqual(4);
+  expect(up.tiltDeg).toBeCloseTo(30, 3);
+  expect(up.forward).toEqual(expect.objectContaining({ x: expect.any(Number) }));
+  const events = report.events.map((e: { event: string }) => e.event);
+  expect(events[0]).toBe("sensor-started");
+  expect(events).not.toContain("capture-failed");
   expect(report.config).toEqual({ format: "gravity" });
   expect(report.reference).toEqual({ heading: 180, pitch: 30, northReference: "true" });
   expect(report.lastPose).not.toHaveProperty("heading");
   expect(report).not.toHaveProperty("location");
   expect(JSON.stringify(report)).not.toContain("latitude");
+});
+
+test("Sensor log records failed captures, unusable readings and why the session ended", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await reference(page);
+  await page.locator("#head-start").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+  // One reading cannot calibrate; the attempt and the readings it saw are logged.
+  await page.evaluate(async (sample) => {
+    window.__g2Test.emit(sample);
+    const button = document.getElementById("align-direction") as HTMLButtonElement;
+    while (button.disabled) await new Promise((resolve) => setTimeout(resolve, 10));
+    button.click();
+  }, gravity(30));
+  await expect(page.locator("#head-status")).toContainText("Wait for at least four fresh readings");
+  // A near-zero frame is a dropout: counted as unusable and kept out of calibration.
+  await page.evaluate(() => window.__g2Test.emit({ x: 0.0001, y: -0.0002, z: -0.0001 }));
+  await expect(page.locator("#head-received")).toContainText("2 sensor messages · 1 unusable");
+  await hold(page, gravity(30));
+  await page.locator("#align-direction").click();
+  await expect(page.locator("#head-up")).toBeEnabled();
+  await page.locator("#head-stop").click();
+  await expect(page.locator("#head-state")).toHaveText("Off");
+  await page.locator("#head-diagnostics summary").click();
+  await page.locator("#head-download").click();
+  const report = JSON.parse(await page.locator("#head-log").inputValue());
+  expect(report.enabled).toBe(false);
+  expect(report.phase).toBe("neutral");
+  expect(report.rejectedMessages).toBe(1);
+  expect(report.samples.filter((s: { unusable?: boolean }) => s.unusable)).toHaveLength(1);
+  expect(report.captures).toHaveLength(1);
+  expect(report.captures[0]).toMatchObject({ step: "forward", dropped: 0 });
+  expect(report.events.map((e: { event: string }) => e.event)).toEqual([
+    "sensor-started",
+    "capture-failed",
+    "ended",
+  ]);
+  expect(report.events[1]).toMatchObject({
+    step: "forward",
+    message: expect.stringContaining("four fresh readings"),
+  });
+  expect(report.events[1].recent).toHaveLength(1);
+  expect(report.events[2]).toMatchObject({ cause: "Stop selected", phase: "up" });
 });
 
 for (const outcome of ["success", "cancel", "failure", "unsupported"] as const) {

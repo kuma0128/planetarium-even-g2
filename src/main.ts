@@ -71,7 +71,7 @@ const glasses = new GlassesDisplay(
       requestRender();
     },
     onMotion: (sample, receivedAt) => head.receive(sample, receivedAt),
-    onMotionStopped: () => head.disconnected(),
+    onMotionStopped: (cause) => head.disconnected(undefined, cause),
     onFrameSent: (duration) => head.frameSent(duration),
   },
 );
@@ -418,7 +418,7 @@ window.addEventListener("pagehide", () => {
   clearTimeout(delivery.timer);
   clearTimeout(renderState.timer);
   if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
-  glasses.stop();
+  glasses.stop("Page hidden");
 });
 // Phone visibility is independent of G2's foreground. The SDK's foreground-exit,
 // disconnect and system-exit events still stop the sensor session.

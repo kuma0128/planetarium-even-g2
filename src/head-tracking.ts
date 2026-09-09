@@ -4,6 +4,19 @@ export type Axis = "x" | "y" | "z";
 export type MotionSample = Record<Axis, number>;
 export type TimedMotionSample = MotionSample & { time: number };
 export type HeadPose = { pitch: number };
+/** What a successful pose capture measured, for the diagnostics log. */
+export type CaptureDetail = {
+  /** Average of the steady readings, in the sensor's own axes and units. */
+  gravity: MotionSample;
+  /** Readings averaged. */
+  used: number;
+  /** Isolated glitches set aside before averaging. */
+  dropped: number;
+  /** Upward pose only: angle from the forward pose in degrees. */
+  tiltDeg?: number;
+  /** Upward pose only: the recovered viewing axis in sensor coordinates. */
+  forward?: MotionSample;
+};
 export const MOTION_TIMEOUT_MS = 1500;
 const axes: Axis[] = ["x", "y", "z"];
 const dot = (a: MotionSample, b: MotionSample) =>
@@ -17,6 +30,13 @@ const scale = (v: MotionSample, n: number): MotionSample => ({
 const unit = (v: MotionSample) => scale(v, 1 / length(v));
 const clamp = (n: number, min: number, max: number) =>
   Math.max(min, Math.min(max, n));
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = sorted.length >> 1;
+  return sorted.length % 2
+    ? sorted[middle]!
+    : (sorted[middle - 1]! + sorted[middle]!) / 2;
+};
 
 export function readMotionSample(value: unknown): MotionSample | null {
   if (!value || typeof value !== "object") return null;
@@ -42,12 +62,23 @@ export function readMotionSample(value: unknown): MotionSample | null {
   return { x: sample.x, y: sample.y, z: sample.z };
 }
 
+/**
+ * G2 occasionally reports a near-zero vector. Gravity is never that small in
+ * any unit, so treat the frame as a dropout: log it, but keep it out of
+ * calibration and tracking.
+ */
+export function usableReading(sample: MotionSample): boolean {
+  return length(sample) >= 1e-3;
+}
+
 /** Two gravity poses establish the viewing axis; tracking only produces elevation. */
 export class HeadTracker {
   phase: "neutral" | "up" | "tracking" = "neutral";
   pose: HeadPose | null = null;
   message = "Face the selected heading and elevation, then use this direction as reference.";
   lastSampleAt = -Infinity;
+  /** Readings set aside during tracking because they looked like acceleration. */
+  ignored = 0;
   private samples: TimedMotionSample[] = [];
   private neutral: MotionSample | null = null;
   private referencePitch = 0;
@@ -60,6 +91,7 @@ export class HeadTracker {
     this.pose = null;
     this.neutral = this.forward = null;
     this.samples = [];
+    this.ignored = 0;
     this.lastSampleAt = this.poseAt = -Infinity;
     this.message = "Face the selected heading and elevation, then use this direction as reference.";
   }
@@ -82,7 +114,10 @@ export class HeadTracker {
     if (this.phase !== "tracking") return true;
     const magnitude = length(sample);
     // Reject linear acceleration / corrupt frames instead of treating them as tilt.
-    if (Math.abs(magnitude / this.gravityLength - 1) > 0.15) return true;
+    if (Math.abs(magnitude / this.gravityLength - 1) > 0.15) {
+      this.ignored++;
+      return true;
+    }
     const next = Math.asin(clamp(dot(unit(sample), this.forward!), -1, 1)) / DEG;
     const weight = 1 - Math.exp(-Math.min(500, now - this.poseAt) / 80);
     this.pose = {
@@ -108,7 +143,7 @@ export class HeadTracker {
   captureForward(
     referencePitch: number,
     now: number,
-  ): void {
+  ): CaptureDetail {
     if (
       !Number.isFinite(referencePitch) ||
       referencePitch < -60 ||
@@ -117,7 +152,8 @@ export class HeadTracker {
       throw new Error(
         "Select Align another direction or Stop, set a reference elevation between −60° and 60°, then set the reference again.",
       );
-    this.neutral = this.stable(now);
+    const steady = this.stable(now);
+    this.neutral = steady.average;
     this.referencePitch = referencePitch;
     this.gravityLength = length(this.neutral);
     this.forward = null;
@@ -126,12 +162,14 @@ export class HeadTracker {
     this.message =
       "Look 20–40° higher without tilting sideways. Hold still, then capture the upward pose.";
     this.samples = [];
+    return { gravity: this.neutral, used: steady.used, dropped: steady.dropped };
   }
 
-  captureUp(now: number): void {
+  captureUp(now: number): CaptureDetail {
     if (this.phase !== "up")
       throw new Error("Capture your forward pose first.");
-    const up = this.stable(now);
+    const steady = this.stable(now);
+    const up = steady.average;
     if (Math.abs(length(up) / this.gravityLength - 1) > 0.1)
       throw new Error(
         "The sensor does not look like a stable gravity vector. Check the sensor details.",
@@ -155,45 +193,65 @@ export class HeadTracker {
       y: n.y * Math.sin(p) + tangent.y * Math.cos(p),
       z: n.z * Math.sin(p) + tangent.z * Math.cos(p),
     };
-    this.begin(now);
+    this.begin(up, now);
+    return {
+      gravity: up,
+      used: steady.used,
+      dropped: steady.dropped,
+      tiltDeg: angle,
+      forward: this.forward,
+    };
   }
 
-  private begin(now: number): void {
+  private begin(up: MotionSample, now: number): void {
     this.phase = "tracking";
     this.pose = null;
     this.poseAt = now;
     this.message = "Following head elevation. Scroll the temple touchpad to browse left/right by 15° per step.";
-    // Apply the captured pose immediately, including when the device stops sending at rest.
-    const latest = this.samples.at(-1)!;
+    // Start from the averaged upward pose, including when the device stops
+    // sending at rest. The latest single reading could be a shock.
     this.lastSampleAt = -Infinity;
-    this.accept(latest, now);
+    this.accept(up, now);
   }
 
-  private stable(now: number): MotionSample {
-    const samples = this.samples.filter((s) => now - s.time <= 800);
+  private stable(now: number): { average: MotionSample; used: number; dropped: number } {
+    const window = this.samples.filter((s) => now - s.time <= 800);
     if (
-      samples.length < 4 ||
+      window.length < 4 ||
       now - this.lastSampleAt > 400 ||
-      samples.at(-1)!.time - samples[0]!.time < 250
+      window.at(-1)!.time - window[0]!.time < 250
     )
       throw new Error(
         "Wait for at least four fresh readings while holding your head still, then try again.",
       );
-    const average = { x: 0, y: 0, z: 0 };
-    for (const s of samples)
-      for (const key of axes) average[key] += s[key] / samples.length;
-    const magnitude = length(average);
+    // A component-wise median survives a dropout frame or a tap shock; a mean
+    // does not. Average only the readings that agree with it.
+    const center = {
+      x: median(window.map((s) => s.x)),
+      y: median(window.map((s) => s.y)),
+      z: median(window.map((s) => s.z)),
+    };
+    const size = length(center);
+    const steady =
+      size < 1e-6
+        ? []
+        : window.filter(
+            (s) =>
+              Math.abs(length(s) / size - 1) <= 0.08 &&
+              dot(unit(s), unit(center)) >= Math.cos(2.5 * DEG),
+          );
+    // Isolated glitches are tolerated; a moving head is not.
     if (
-      magnitude < 1e-6 ||
-      samples.some(
-        (s) =>
-          Math.abs(length(s) / magnitude - 1) > 0.08 ||
-          dot(unit(s), unit(average)) < Math.cos(2.5 * DEG),
-      )
+      steady.length < 4 ||
+      window.length - steady.length > Math.max(1, Math.floor(window.length / 4)) ||
+      steady.at(-1)!.time - steady[0]!.time < 250
     )
       throw new Error(
         "Readings are moving or are not a gravity vector. Hold still and try again.",
       );
-    return average;
+    const average = { x: 0, y: 0, z: 0 };
+    for (const s of steady)
+      for (const key of axes) average[key] += s[key] / steady.length;
+    return { average, used: steady.length, dropped: window.length - steady.length };
   }
 }

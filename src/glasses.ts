@@ -64,7 +64,7 @@ export type GlassesHooks = {
   onConnected?: () => void;
   onForeground?: () => void;
   onMotion?: (sample: unknown, receivedAt: number) => void;
-  onMotionStopped?: () => void;
+  onMotionStopped?: (cause: string) => void;
   onFrameSent?: (durationMs: number) => void;
 };
 export class GlassesDisplay {
@@ -198,7 +198,7 @@ export class GlassesDisplay {
           void this.setMotionEnabled(false).catch((error) =>
             this.onStatus(String(error)),
           );
-          this.hooks.onMotionStopped?.();
+          this.hooks.onMotionStopped?.("G2 left the foreground");
           return;
         }
         // CLICK_EVENT is 0: do not discard it with a truthiness check.
@@ -217,8 +217,9 @@ export class GlassesDisplay {
           type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
           type === OsEventTypeList.ABNORMAL_EXIT_EVENT
         ) {
-          this.stop();
-          this.onStatus(type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+          const abnormal = type === OsEventTypeList.ABNORMAL_EXIT_EVENT;
+          this.stop(abnormal ? "G2 display closed unexpectedly" : "G2 display closed");
+          this.onStatus(abnormal
             ? "G2 display closed unexpectedly. Reconnect to resume."
             : "G2 display closed.");
         } else if (type === OsEventTypeList.SCROLL_TOP_EVENT)
@@ -240,7 +241,7 @@ export class GlassesDisplay {
           status.connectType === DeviceConnectType.Disconnected ||
           status.connectType === DeviceConnectType.ConnectionFailed
         ) {
-          this.stop();
+          this.stop("G2 disconnected");
           this.onStatus("G2 disconnected. Reconnect to resume.");
         }
       });
@@ -268,7 +269,7 @@ export class GlassesDisplay {
         },
         (error) => {
           if (generation !== this.generation) return;
-          this.stop();
+          this.stop("G2 updates stopped");
           this.onStatus(
             `G2 updates stopped. Please reconnect. ${error instanceof Error ? error.message : ""}`,
           );
@@ -415,7 +416,7 @@ export class GlassesDisplay {
       return error instanceof Error ? error.message : String(error);
     }
   }
-  stop(): void {
+  stop(cause = "G2 session stopped"): void {
     this.generation++;
     this.active = false;
     this.inForeground = false;
@@ -425,7 +426,7 @@ export class GlassesDisplay {
     this.unsubscribeDevice?.();
     this.unsubscribeDevice = null;
     this.closeMotion();
-    this.hooks.onMotionStopped?.();
+    this.hooks.onMotionStopped?.(cause);
   }
   private closeMotion(): void {
     if (this.motion) {
