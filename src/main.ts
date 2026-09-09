@@ -188,9 +188,12 @@ function render(): void {
     skyCache.declination,
     Number(input("offset").value),
   );
+  // Draw at the same 0.2° precision used to coalesce deliveries. Otherwise a
+  // settling sensor can change preview pixels without changing the frame key,
+  // leaving G2 on an earlier frame until another input or a forced refresh.
   const options = {
-    heading: heading ?? observing.heading,
-    pitch: head.pose?.pitch ?? Number(input("pitch").value),
+    heading: wrap(Math.round((heading ?? observing.heading) * 5) / 5),
+    pitch: Math.round((head.pose?.pitch ?? Number(input("pitch").value)) * 5) / 5,
     fov: Number(input("fov").value),
     magnitude: Number(input("magnitude").value),
     lines: input("lines").checked,
@@ -217,8 +220,8 @@ function render(): void {
   }, display);
   const frameKey = JSON.stringify([
     skyCache.key,
-    Math.round(options.heading * 5) / 5,
-    Math.round(options.pitch * 5) / 5,
+    options.heading,
+    options.pitch,
     options.fov,
     options.magnitude,
     options.lines,

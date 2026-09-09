@@ -4,7 +4,7 @@
 
 An open-source Even Hub app that puts a sky map on Even Realities G2. Choose your observing location and time, then set your viewing direction manually.
 
-Set your viewing direction manually, then use the G2 sensor to follow head elevation. A direction-reference button anchors a two-pose calibration; automatic tracking changes elevation only.
+Set your viewing direction manually, then look up/down to follow head elevation and scroll the temple touchpad to browse left/right. A direction-reference button anchors a two-pose calibration.
 
 ![G2 Planetarium browser UI showing a night sky map, compass, time, location, and visible objects](docs/images/planetarium-ui.jpg)
 
@@ -19,7 +19,7 @@ Set your viewing direction manually, then use the G2 sensor to follow head eleva
 - **Adjustable view:** change elevation, field of view, the star magnitude limit, and constellation lines. See the brightest named objects with their azimuth and altitude.
 - **Full-display planetarium:** the sky fills the entire 576 × 288 display by default. Date, direction/elevation numbers, Moon readouts, and star/direction labels start hidden. Enable the information and label options independently, or turn off full-display mode for the compact sky map. Temporary head-calibration instructions still appear during setup.
 - **G2 head tilt:** use **Use this direction as reference** to capture your forward view, then capture an upward tilt to start elevation tracking. **Align another direction** resets the reference without reconnecting the sensor. Sensor readings, sample rate, transfer timing, and a downloadable log help with real-device verification.
-- **G2 controls:** tap to switch Now / Tonight, swipe to turn the manual heading by 15 degrees, and double-tap for the exit dialog.
+- **Head + touchpad controls:** look up/down to follow elevation; scroll the temple touchpad to browse left/right by 15 degrees per step without stopping head tracking. Scroll up moves left (heading −15°); scroll down moves right (heading +15°). R1 ring scrolling works too. Tap switches Now / Tonight, and double-tap opens the exit dialog.
 
 ## Run the browser preview
 
@@ -40,7 +40,7 @@ Open <http://localhost:5173/>. The initial view is a clearly labeled **Tokyo dem
 4. Under **North reference & calibration**, select **True north** if your compass already applies magnetic correction. Otherwise keep **Magnetic north**.
 5. Set **Elevation angle**: 0 degrees is the horizon; 90 degrees is straight up.
 
-Direction is manual on both iPhone and Android. This app does not request phone orientation permission. Use **G2 head tilt** below to set a direction reference and follow elevation. Changing your head's left/right direction is not detected; align the heading again after turning.
+Direction is controlled manually or with temple/ring scrolling on both iPhone and Android. This app does not request phone orientation permission. Use **G2 head tilt** below to set a direction reference and follow elevation. Changing your head's left/right direction is not detected; align the heading again after physically turning.
 
 Browser location access normally requires HTTPS. G2 sensor access goes through the Even Hub SDK and does not need phone compass permission.
 
@@ -75,10 +75,10 @@ The implementation uses stable gravity-like readings from the [official IMU API]
 2. Face a known direction. Set **Compass heading**, its north reference, and **Elevation angle** to match your view. For example, use 90° for east with the correct magnetic/true north reference, and 0° for the horizon. Start between −60° and 60° elevation.
 3. Under **G2 head tilt**, select **Start G2 sensor**. Hold still for about one second, then select **1. Use this direction as reference**, or tap the glasses/ring. The captured heading and elevation appear under the buttons.
 4. Look 20–40° higher without turning or tilting sideways. Hold still for about one second, then select **2. Capture upward tilt**, or tap again. Tracking starts after this second pose. During tracking, taps resume switching Now / Tonight.
-5. Look up and down. The map follows elevation while the manually aligned heading stays fixed. Sideways roll is compensated for elevation; the map itself does not rotate with your head.
-6. To face another direction, select **Align another direction**, adjust the heading and elevation, and repeat the two captures. The sensor stays connected. **Stop** returns to manual elevation at the last displayed angle.
+5. Look up and down to follow elevation. Scroll the temple touchpad to browse left/right by 15° per step; scrolling does not stop the sensor or reset calibration. R1 ring scrolling also works. Sideways roll is compensated for elevation; the map itself does not rotate with your head.
+6. To realign the map with a new physical viewing direction, select **Align another direction**, adjust the heading and elevation, and repeat the two captures. The sensor stays connected. **Stop** returns to manual elevation at the last displayed angle.
 
-The reference button records the direction you supply; it does not measure north or enable left/right tracking. Heading controls and 15° swipes remain available for manual adjustment. The former phone-compass and rotation-angle experiments have been removed.
+The reference button records the direction you supply; it does not measure north or enable left/right head tracking. Temple/ring scrolling changes the displayed heading and keeps it there until the next scroll or manual adjustment. Both scroll directions wrap across north (0°/360°). No recalibration is needed to browse the sky this way.
 
 Samples with a large magnitude change are ignored as possible acceleration. This cannot eliminate every movement artifact. Missing or unusable readings for 1.5 seconds freeze the last elevation and invalidate calibration; new readings alone never silently reactivate it. Disconnecting, leaving the **G2 foreground**, closing the page, or stopping also ends the sensor session. Hiding just the phone view does not stop tracking; continued updates depend on the Even host keeping JavaScript and the sensor stream alive.
 
@@ -95,7 +95,7 @@ npm run test:browser
 npm run pack
 ```
 
-The automated tests cover astronomy and projection, magnetic correction, manual heading correction, direction-reference calibration across axes and mounting angles, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, stop/reconnect, slow frame transfers, log export, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
+The automated tests cover astronomy and projection, magnetic correction, manual heading correction, direction-reference calibration across axes and mounting angles, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, simultaneous head tilt and touchpad scrolling, north wrapping, stop/reconnect, slow frame transfers, log export, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
 
 The browser preview supports desktop and mobile layouts.
 

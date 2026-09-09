@@ -8,7 +8,7 @@ test("A sensor acknowledgement without readings cannot enable calibration and ca
   await expect(page.locator("#head-state")).toHaveText("Waiting for sensor");
   await expect(page.locator("#align-direction")).toBeDisabled();
   await expect(page.locator("#head-status")).toContainText("No G2 sensor readings received");
-  await expect(page.locator("#head-scope")).toContainText("Up / down only");
+  await expect(page.locator("#head-scope")).toContainText("Left / right: temple touchpad scroll");
   await page.locator("#head-stop").click();
   await page.locator("#head-start").click();
   await hold(page, gravity(30));

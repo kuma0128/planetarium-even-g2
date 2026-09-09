@@ -156,7 +156,7 @@ export class HeadTracker {
     this.phase = "tracking";
     this.pose = null;
     this.poseAt = now;
-    this.message = "Following head elevation from your reference. Direction uses your manually aligned heading.";
+    this.message = "Following head elevation. Scroll the temple touchpad to browse left/right by 15° per step.";
     // Apply the captured pose immediately, including when the device stops sending at rest.
     const latest = this.samples.at(-1)!;
     this.lastSampleAt = -Infinity;
