@@ -128,6 +128,11 @@ export class PhoneCompass {
     const listener = (event: DeviceOrientationEvent) => {
       const sample = readHeading(event);
       if (!sample) {
+        // Android emits relative events alongside absolute compass readings.
+        // They must not replace a live heading's status or its last issue.
+        const relative = !event.absolute &&
+          !Number.isFinite((event as Orientation).webkitCompassHeading);
+        if (relative && receivedAt) return;
         lastIssue = headingIssue(event);
         onStatus(lastIssue);
         return;

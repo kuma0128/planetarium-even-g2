@@ -20,6 +20,27 @@ import { validLocation, type Location } from "./sky.ts";
 
 const TILE_WIDTH = MAP_WIDTH / 2;
 
+async function withTimeout<T>(operation: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function samePixels(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++)
+    if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export type GlassesFrame = {
   image: HTMLCanvasElement;
   force?: boolean;
@@ -64,30 +85,25 @@ export class GlassesDisplay {
     const generation = ++this.generation;
     this.active = false;
     this.onStatus("Connecting to the Even app…");
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // A stopped queue may still have an in-flight native image call. Drain it
       // before rebuilding the page so a reconnect never overlaps image sends.
       this.queue?.stop();
-      await this.queue?.idle();
-      await this.closingMotion;
-      if (this.motion) await this.motion.close();
-      this.motion = null;
+      if (this.motion) {
+        this.closingMotion = this.motion.close();
+        this.motion = null;
+      }
+      await withTimeout(
+        Promise.all([this.queue?.idle(), this.closingMotion]),
+        4000,
+        "The previous G2 session is still waiting for the Even app. Check the connection, then retry Connect G2 or reopen the app.",
+      );
       if (generation !== this.generation) return;
-      const bridge = await Promise.race([
+      const bridge = await withTimeout(
         this.acquireBridge(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () =>
-              reject(
-                new Error(
-                  "Open this app through Even Hub in the Even app. A regular browser provides a preview.",
-                ),
-              ),
-            6000,
-          );
-        }),
-      ]);
+        6000,
+        "Open this app through Even Hub in the Even app. A regular browser provides a preview.",
+      );
       if (generation !== this.generation) return;
       this.bridge = bridge;
       this.pixels = [];
@@ -113,7 +129,7 @@ export class GlassesDisplay {
           // Gestures still use its single isEventCapture target.
           imageObject: Array.from({ length: 4 }, (_, i) =>
             new ImageContainerProperty({
-              containerID: 3 + i,
+              containerID: 2 + i,
               containerName: `sky-tile-${i}`,
               xPosition: (i % 2) * TILE_WIDTH,
               yPosition: Math.floor(i / 2) * MAP_HEIGHT,
@@ -211,8 +227,6 @@ export class GlassesDisplay {
       this.active = false;
       this.onStatus(error instanceof Error ? error.message : String(error));
       throw error;
-    } finally {
-      clearTimeout(timer);
     }
   }
   async setMotionEnabled(enabled: boolean): Promise<void> {
@@ -278,12 +292,12 @@ export class GlassesDisplay {
       const previous = this.pixels[i];
       if (
         !force && previous &&
-        pixels.every((value, index) => value === previous[index])
+        samePixels(pixels, previous)
       )
         continue;
       const result = await bridge.updateImageRawData(
         new ImageRawDataUpdate({
-          containerID: 3 + i,
+          containerID: 2 + i,
           containerName: `sky-tile-${i}`,
           imageData: await pngBytes(tile),
         }),

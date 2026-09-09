@@ -27,6 +27,35 @@ test("Denied orientation access explains the Even limitation without disabling m
   await expect(page.locator("#heading")).toBeEnabled();
 });
 
+test("Mixed absolute and relative orientation events keep the live compass status stable", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(DeviceOrientationEvent, { requestPermission: async () => "granted" });
+  });
+  await page.goto("/");
+  await page.locator("#phone-mode").click();
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event("deviceorientation"), {
+    alpha: 0, beta: 0, gamma: 0, absolute: false,
+  })));
+  await expect(page.locator("#compass-status")).toContainText("No north-referenced");
+  const statuses = await page.evaluate(async () => {
+    const statuses: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      window.dispatchEvent(Object.assign(new Event("deviceorientationabsolute"), {
+        alpha: 90, beta: 0, gamma: 0, absolute: true,
+      }));
+      window.dispatchEvent(Object.assign(new Event("deviceorientation"), {
+        alpha: i * 10, beta: 0, gamma: 0, absolute: false,
+      }));
+      statuses.push(document.querySelector("#compass-status")!.textContent!);
+      await new Promise(resolve => setTimeout(resolve, 16));
+    }
+    return statuses;
+  });
+  expect(statuses).toEqual(Array(12).fill("Following the phone compass."));
+  await expect(page.locator("#heading")).toHaveValue("270");
+  await expect(page.locator("#heading-source")).toHaveText("Phone");
+});
+
 test("A valid phone compass uses its magnetic reference and reports tilt and stale data", async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(DeviceOrientationEvent, { requestPermission: async () => "granted" });

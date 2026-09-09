@@ -33,6 +33,7 @@ main {
 }
 button,
 input,
+textarea,
 select {
   font: inherit;
 }
@@ -61,6 +62,7 @@ button:disabled {
 }
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 select:focus-visible,
 a:focus-visible,
 summary:focus-visible {
@@ -466,6 +468,7 @@ summary {
 }
 input[type="number"],
 input[type="datetime-local"],
+.settings-fields textarea,
 .settings-fields select {
   background: #0c1410;
   border: 1px solid #344637;
@@ -475,6 +478,10 @@ input[type="datetime-local"],
   min-width: 0;
   color: #e0eadb;
   font-size: 12px;
+}
+.settings-fields textarea {
+  resize: vertical;
+  font-family: monospace;
 }
 input[type="datetime-local"] {
   font-size: 14px;

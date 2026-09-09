@@ -171,7 +171,7 @@ export class HeadTracker {
       reference.pitch > 60
     )
       throw new Error(
-        "Set a reference elevation between −60° and 60° before calibrating.",
+        "Select Stop, set a reference elevation between −60° and 60°, then start the sensor and calibrate again.",
       );
     if (
       this.config.format !== "gravity" &&

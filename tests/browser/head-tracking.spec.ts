@@ -8,10 +8,18 @@ type Host = {
   maxImageInFlight: number;
   failImages: boolean;
   failMotion: boolean;
+  blockImages: boolean;
+  blockMotionStop: boolean;
+  releaseImage: () => void;
+  releaseMotionStop: () => void;
   motion: boolean;
   omitZeroAxes: boolean;
   images: Record<number, number[] | string>;
   drawnText: string[];
+  renderTimes: number[];
+  sharedLog?: string;
+  copiedLog?: string;
+  downloadAttempts: number;
   emit: (sample: Sample) => void;
 };
 declare global {
@@ -29,10 +37,16 @@ async function host(page: Page): Promise<void> {
       maxImageInFlight: 0,
       failImages: false,
       failMotion: false,
+      blockImages: false,
+      blockMotionStop: false,
+      releaseImage: () => {},
+      releaseMotionStop: () => {},
       motion: false,
       omitZeroAxes: false,
       images: {},
       drawnText: [],
+      renderTimes: [],
+      downloadAttempts: 0,
       emit: (sample) =>
         window.dispatchEvent(
           new CustomEvent("evenHubEvent", {
@@ -47,6 +61,13 @@ async function host(page: Page): Promise<void> {
       state.drawnText.push(args[0]);
       if (state.drawnText.length > 600) state.drawnText.shift();
       return fillText.apply(this, args);
+    };
+    const fillRect = CanvasRenderingContext2D.prototype.fillRect;
+    CanvasRenderingContext2D.prototype.fillRect = function (...args) {
+      if (this.canvas.id === "sky" && args[0] === 0 && args[1] === 0 &&
+          args[2] === 576 && args[3] === 288)
+        state.renderTimes.push(performance.now());
+      return fillRect.apply(this, args);
     };
     // Exercise the real SDK's native-call serialization and public event subscription.
     Object.assign(window, {
@@ -65,6 +86,8 @@ async function host(page: Page): Promise<void> {
             return { model: "g2", sn: "test-g2" };
           if (method === "imuControl") {
             if (state.failMotion && data.iMUReportEn === 1) return false;
+            if (state.blockMotionStop && data.iMUReportEn === 0)
+              await new Promise<void>(resolve => { state.releaseMotionStop = resolve; });
             state.motion = data.iMUReportEn === 1;
             return true;
           }
@@ -74,6 +97,8 @@ async function host(page: Page): Promise<void> {
               state.maxImageInFlight,
               state.imageInFlight,
             );
+            if (state.blockImages)
+              await new Promise<void>(resolve => { state.releaseImage = resolve; });
             await new Promise((resolve) =>
               setTimeout(resolve, state.imageDelay),
             );
@@ -135,7 +160,7 @@ async function expectDeliveredFrame(page: Page): Promise<void> {
     delivered.height = 288;
     const ctx = delivered.getContext("2d")!;
     for (let i = 0; i < 4; i++) {
-      const bytes = window.__g2Test.images[3 + i];
+      const bytes = window.__g2Test.images[2 + i];
       if (!bytes) return false;
       const data = typeof bytes === "string"
         ? Uint8Array.from(atob(bytes), char => char.charCodeAt(0))
@@ -163,13 +188,13 @@ test("Full-display mode starts without text and delivers the entire 576 x 288 fr
   const layout = await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "createStartUpPageContainer")!.data);
   expect(layout?.containerTotalNum).toBe(5);
   expect(layout?.textObject).toEqual([
-    expect.objectContaining({ content: "", isEventCapture: 1, zOrderIndex: 0 }),
+    expect.objectContaining({ containerID: 1, content: "", isEventCapture: 1, zOrderIndex: 0 }),
   ]);
   expect(layout?.imageObject).toEqual([
-    expect.objectContaining({ xPosition: 0, yPosition: 0, width: 288, height: 144, zOrderIndex: 1 }),
-    expect.objectContaining({ xPosition: 288, yPosition: 0, width: 288, height: 144, zOrderIndex: 2 }),
-    expect.objectContaining({ xPosition: 0, yPosition: 144, width: 288, height: 144, zOrderIndex: 3 }),
-    expect.objectContaining({ xPosition: 288, yPosition: 144, width: 288, height: 144, zOrderIndex: 4 }),
+    expect.objectContaining({ containerID: 2, xPosition: 0, yPosition: 0, width: 288, height: 144, zOrderIndex: 1 }),
+    expect.objectContaining({ containerID: 3, xPosition: 288, yPosition: 0, width: 288, height: 144, zOrderIndex: 2 }),
+    expect.objectContaining({ containerID: 4, xPosition: 0, yPosition: 144, width: 288, height: 144, zOrderIndex: 3 }),
+    expect.objectContaining({ containerID: 5, xPosition: 288, yPosition: 144, width: 288, height: 144, zOrderIndex: 4 }),
   ]);
   // Blank captions must not remove the physical gesture target.
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("evenHubEvent", {
@@ -406,6 +431,30 @@ test("The final stationary frame is delivered even when movements arrive during 
   expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
 });
 
+test("Tracking coalesces frequent sensor updates into at most ten renders per second", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  // Keep periodic sky recalculation outside the sensor-render timing check.
+  await page.locator("#date").fill("2026-01-15T21:00");
+  await page.locator("#date").press("Tab");
+  await reference(page);
+  await calibrateTilt(page);
+  const renders = await page.evaluate(async () => {
+    const state = window.__g2Test;
+    state.renderTimes = [];
+    for (let i = 0; i < 60; i++) {
+      const pitch = (20 + i / 2) * Math.PI / 180;
+      state.emit({ x: Math.sin(pitch), y: 0, z: Math.cos(pitch) });
+      await new Promise(resolve => setTimeout(resolve, 16));
+    }
+    return state.renderTimes;
+  });
+  expect(renders.length).toBeGreaterThan(3);
+  for (let i = 1; i < renders.length; i++)
+    expect(renders[i] - renders[i - 1]).toBeGreaterThanOrEqual(95);
+  await expectDeliveredFrame(page);
+});
+
 test("Stale sensor readings freeze the map and require calibration before resuming", async ({
   page,
 }) => {
@@ -422,6 +471,40 @@ test("Stale sensor readings freeze the map and require calibration before resumi
   await page.locator("#head-forward").click();
   await expect(page.locator("#head-up")).toBeEnabled();
   await expect(page.locator("#pitch-value")).toHaveText("60°");
+});
+
+test("A failed forward capture after a pause stays readable until calibration is retried", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await reference(page);
+  await calibrateTilt(page);
+  await expect(page.locator("#heading-source")).toHaveText("Head paused", { timeout: 4000 });
+  await page.evaluate(sample => window.__g2Test.emit(sample), gravity(30));
+  await page.locator("#head-forward").click();
+  await expect(page.locator("#head-status")).toContainText("Wait for at least four fresh readings");
+  await hold(page, gravity(30));
+  await expect(page.locator("#head-status")).toContainText("Wait for at least four fresh readings");
+  await expect(page.locator("#lens-footer")).toContainText("Pose not captured");
+  await page.locator("#head-forward").click();
+  await expect(page.locator("#head-up")).toBeEnabled();
+  await expect(page.locator("#head-status")).toContainText("Look 20–40° higher");
+});
+
+test("A paused elevation outside the calibration range explains how to recover with Stop", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await reference(page);
+  await calibrateTilt(page);
+  await hold(page, gravity(75));
+  await expect(page.locator("#pitch-value")).toHaveText("75°");
+  await expect(page.locator("#heading-source")).toHaveText("Head paused", { timeout: 4000 });
+  await hold(page, gravity(30));
+  await page.locator("#head-forward").click();
+  await expect(page.locator("#head-status")).toContainText("Select Stop");
+  await expect(page.locator("#head-status")).toContainText("between −60° and 60°");
+  await page.locator("#head-stop").click();
+  await range(page, "#pitch", "30");
+  await calibrateTilt(page);
 });
 
 test("Experimental yaw remains disabled until the right-turn check, then manual mode releases it", async ({
@@ -487,6 +570,59 @@ test("Disconnect stops tracking and reconnect requires a new calibration", async
   await hold(page, gravity(30));
   await expect(page.locator("#head-forward")).toBeEnabled();
   await expect(page.locator("#head-up")).toBeDisabled();
+});
+
+for (const blocked of ["image", "motion"] as const) {
+  test(`Reconnect times out a stalled ${blocked} call and can be retried after it settles`, async ({ page }) => {
+    await host(page);
+    await page.goto("/");
+    await reference(page);
+    await expectDeliveredFrame(page);
+    await page.locator("#head-start").click();
+    await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+    await page.evaluate(blocked => {
+      window.__g2Test.blockImages = blocked === "image";
+      window.__g2Test.blockMotionStop = blocked === "motion";
+    }, blocked);
+    if (blocked === "image") {
+      await page.locator("#refresh-display").click();
+      await expect.poll(() => page.evaluate(() => window.__g2Test.imageInFlight)).toBe(1);
+    }
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("deviceStatusChanged", {
+      detail: { sn: "test-g2", connectType: "disconnected" },
+    })));
+    await expect(page.locator("#bridge-status")).toContainText("disconnected");
+    await page.locator("#connect").click();
+    await expect(page.locator("#connect")).toBeDisabled();
+    await expect(page.locator("#bridge-status")).toContainText("previous G2 session", { timeout: 6000 });
+    await expect(page.locator("#connect")).toBeEnabled();
+    expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
+    await page.evaluate(() => {
+      const state = window.__g2Test;
+      state.blockImages = state.blockMotionStop = false;
+      state.releaseImage();
+      state.releaseMotionStop();
+    });
+    await page.locator("#connect").click();
+    await expectDeliveredFrame(page);
+    await expect.poll(() => page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(2);
+    expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
+    await expect(page.locator("#head-state")).toHaveText("Off");
+  });
+}
+
+test("Disconnecting an unused sensor leaves its setup message intact", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await reference(page);
+  await expectDeliveredFrame(page);
+  const initial = await page.locator("#head-status").textContent();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("deviceStatusChanged", {
+    detail: { sn: "test-g2", connectType: "disconnected" },
+  })));
+  await expect(page.locator("#bridge-status")).toContainText("disconnected");
+  await expect(page.locator("#head-status")).toHaveText(initial!);
+  await expect(page.locator("#head-state")).toHaveText("Off");
 });
 
 test("A frame failure stops the sensor; reconnect redraws an unchanged sky", async ({
@@ -578,6 +714,8 @@ test("Sensor log contains real-session samples and capture markers, with no loca
   const chunks = [];
   for await (const chunk of stream!) chunks.push(chunk);
   const report = JSON.parse(Buffer.concat(chunks).toString());
+  expect(JSON.parse(await page.locator("#head-log").inputValue())).toEqual(report);
+  await expect(page.locator("#head-log")).toBeVisible();
   expect(report.samples.length).toBeGreaterThan(10);
   expect(report.captures.map((c: { step: string }) => c.step)).toEqual([
     "forward",
@@ -587,6 +725,64 @@ test("Sensor log contains real-session samples and capture markers, with no loca
   expect(report).not.toHaveProperty("location");
   expect(JSON.stringify(report)).not.toContain("latitude");
 });
+
+for (const outcome of ["success", "cancel", "failure", "unsupported"] as const) {
+  test(`Sensor log export remains accessible when file sharing reports ${outcome}`, async ({ page }) => {
+    await host(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.locator("#head-start").click();
+    await hold(page, gravity(30));
+    await page.locator("#head-diagnostics summary").click();
+    await page.evaluate(outcome => {
+      const state = window.__g2Test;
+      Object.defineProperty(navigator, "canShare", { configurable: true, value: () => outcome !== "unsupported" });
+      Object.defineProperty(navigator, "share", { configurable: true, value: async ({ files }: ShareData) => {
+        if (outcome === "cancel") throw new DOMException("Cancelled", "AbortError");
+        if (outcome === "failure") throw new DOMException("Unavailable", "NotAllowedError");
+        state.sharedLog = await files![0].text();
+      } });
+      // Model a WebView that ignores downloads and may deny clipboard access.
+      HTMLAnchorElement.prototype.click = () => { state.downloadAttempts++; };
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+        writeText: async (text: string) => {
+          if (outcome !== "success") throw new DOMException("Unavailable", "NotAllowedError");
+          state.copiedLog = text;
+        },
+      } });
+    }, outcome);
+    await page.locator("#head-download").click();
+    await expect(page.locator("#head-download")).toBeEnabled();
+    await expect(page.locator("#head-log")).toBeVisible();
+    const json = await page.locator("#head-log").inputValue();
+    expect(JSON.parse(json).samples.length).toBeGreaterThan(10);
+    expect(json).not.toContain("latitude");
+    if (outcome === "success") {
+      await expect(page.locator("#head-log-status")).toContainText("shared");
+      expect(await page.evaluate(() => window.__g2Test.sharedLog)).toBe(json);
+    } else if (outcome === "cancel") {
+      await expect(page.locator("#head-log-status")).toContainText("Sharing cancelled");
+    } else {
+      await expect(page.locator("#head-log-status")).toContainText("Download requested");
+    }
+    expect(await page.evaluate(() => window.__g2Test.downloadAttempts))
+      .toBe(outcome === "success" || outcome === "cancel" ? 0 : 1);
+    await page.locator("#head-copy").click();
+    if (outcome === "success") {
+      await expect(page.locator("#head-log-status")).toContainText("copied");
+      expect(await page.evaluate(() => window.__g2Test.copiedLog)).toBe(json);
+    } else {
+      await expect(page.locator("#head-log-status")).toContainText("your device's Copy command");
+      expect(await page.locator("#head-log").evaluate(log => {
+        const area = log as HTMLTextAreaElement;
+        return area.selectionEnd - area.selectionStart;
+      })).toBe(json.length);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (outcome === "unsupported")
+      await page.screenshot({ path: "artifacts/sensor-log-mobile.png", fullPage: true });
+  });
+}
 
 test("Mobile browser preview keeps manual controls and reports that no native host is present", async ({
   page,

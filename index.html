@@ -40,6 +40,8 @@
             ><span id="sky-period" class="pill">Now</span>
           </div>
           <div class="lens">
+            <!-- Hidden caption mirrors let browser tests inspect text drawn into
+                 the shared preview/G2 canvas without duplicating it on screen. -->
             <p id="lens-header" hidden></p>
             <canvas
               id="sky"
@@ -331,12 +333,18 @@
               ><span id="head-transfer">No frame sent yet</span>
             </div>
             <button id="head-download" class="button subtle full" disabled>
-              Download sensor log
+              Save or share sensor log
             </button>
             <p class="caption">
               Last 600 readings; no location included. Transfer time measures
               host acceptance, not when the image reaches your eyes.
             </p>
+            <div id="head-log-panel" class="settings-fields" hidden>
+              <p id="head-log-status" class="helper" role="status"></p>
+              <label for="head-log">Sensor log JSON</label>
+              <textarea id="head-log" rows="8" readonly spellcheck="false"></textarea>
+              <button id="head-copy" class="button subtle full">Copy sensor log</button>
+            </div>
           </details>
         </section>
       </div>

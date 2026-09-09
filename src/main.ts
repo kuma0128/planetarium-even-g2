@@ -39,6 +39,7 @@ let skyKey = "";
 let renderRequested = false;
 let renderTimer: number | undefined;
 let renderAnimation: number | undefined;
+let lastRender = -Infinity;
 let forceGlassesSend = false;
 let lastGlassesSend = 0;
 let lastGlassesKey = "";
@@ -144,7 +145,14 @@ function requestRender(): void {
     clearTimeout(renderTimer);
     if (renderAnimation !== undefined) cancelAnimationFrame(renderAnimation);
     renderTimer = renderAnimation = undefined;
+    const now = performance.now();
+    const wait = head.active ? 100 - (now - lastRender) : 0;
+    if (wait > 0) {
+      renderTimer = window.setTimeout(flush, wait);
+      return;
+    }
     renderRequested = false;
+    lastRender = now;
     render();
   };
   // Even's WebView can suspend animation frames while G2 is still in use.

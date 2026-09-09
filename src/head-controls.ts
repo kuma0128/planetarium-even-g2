@@ -26,6 +26,7 @@ export class HeadControls {
   private lastRefresh = -Infinity;
   private transferMs: number | null = null;
   private captureFailed = false;
+  private exporting = false;
   private receivedCount = 0;
   private rejectedCount = 0;
   private status =
@@ -56,7 +57,8 @@ export class HeadControls {
       "head-yaw-sign",
     ])
       element(id).onchange = () => this.recalibrate();
-    element("head-download").onclick = () => this.download();
+    element("head-download").onclick = () => void this.download();
+    element("head-copy").onclick = () => void this.copyLog();
     this.refresh(performance.now(), true);
   }
   get pose() {
@@ -106,7 +108,10 @@ export class HeadControls {
     if (!this.tracker.receive(sample, now)) return;
     this.samples.push({ ...sample, time: now });
     if (this.samples.length > 600) this.samples.shift();
-    if (phase !== this.tracker.phase || (recovering && !this.captureFailed))
+    if (phase !== this.tracker.phase) {
+      this.captureFailed = false;
+      this.status = this.tracker.message;
+    } else if (recovering && !this.captureFailed)
       this.status = this.tracker.message;
     this.changed();
   }
@@ -167,6 +172,7 @@ export class HeadControls {
   disconnected(
     message = "Motion session ended. Start the sensor and calibrate again.",
   ): void {
+    if (!this.enabled && !this.busy) return;
     this.beforeReset();
     this.generation++;
     this.enabled = this.busy = false;
@@ -188,11 +194,17 @@ export class HeadControls {
   }
 
   refresh(now: number, force = false): void {
+    const phase = this.tracker.phase;
     this.tracker.expire(now);
+    if (phase !== this.tracker.phase) {
+      this.status = this.tracker.message;
+      this.captureFailed = false;
+    }
     if (!force && now - this.lastRefresh < 100) return;
     this.lastRefresh = now;
     if (
       this.enabled &&
+      !this.captureFailed &&
       now - Math.max(this.tracker.lastSampleAt, this.startedAt) >
         MOTION_TIMEOUT_MS
     )
@@ -201,12 +213,6 @@ export class HeadControls {
         : this.rejectedCount === this.receivedCount
           ? "G2 sensor messages arrived without usable x/y/z readings. Stop and retry the sensor; check the Even app version."
           : "No fresh G2 motion data. Hold still, check the connection, then calibrate again.";
-    else if (
-      this.enabled &&
-      this.tracker.pose &&
-      this.tracker.phase === "neutral"
-    )
-      this.status = this.tracker.message;
     text("head-status", this.status);
     const fresh = now - this.tracker.lastSampleAt <= MOTION_TIMEOUT_MS;
     text("head-state", this.active ? "Tracking" : !this.enabled ? "Off"
@@ -253,7 +259,8 @@ export class HeadControls {
         ? `x ${last.x.toFixed(4)}   y ${last.y.toFixed(4)}   z ${last.z.toFixed(4)}`
         : "x —   y —   z —",
     );
-    element<HTMLButtonElement>("head-download").disabled = !this.samples.length;
+    element<HTMLButtonElement>("head-download").disabled =
+      !this.samples.length || this.exporting;
   }
 
   private capture(step: string, action: () => void): void {
@@ -286,7 +293,8 @@ export class HeadControls {
     };
   }
 
-  private download(): void {
+  private async download(): Promise<void> {
+    if (!this.samples.length || this.exporting) return;
     const first = this.startedAt;
     const report = {
       version: 1,
@@ -307,13 +315,56 @@ export class HeadControls {
         ...sample,
       })),
     };
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `g2-motion-${new Date().toISOString().replaceAll(":", "-")}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const json = JSON.stringify(report, null, 2);
+    const filename = `g2-motion-${new Date().toISOString().replaceAll(":", "-")}.json`;
+    // Some embedded views silently ignore downloads. Keep a selectable snapshot
+    // even when sharing or the clipboard is unavailable in the host.
+    element<HTMLTextAreaElement>("head-log").value = json;
+    element("head-log-panel").hidden = false;
+    this.exporting = true;
+    this.refresh(performance.now(), true);
+    text("head-log-status", "Preparing sensor log…");
+    try {
+      const file = new File([json], filename, { type: "application/json" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "G2 sensor log" });
+          text("head-log-status", "Sensor log shared. A copy is also available below.");
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            text("head-log-status", "Sharing cancelled. You can still copy the log below.");
+            return;
+          }
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      try {
+        link.click();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      text("head-log-status", "Download requested. If no file appears, copy the log below.");
+    } catch {
+      text("head-log-status", "Could not save a file in this view. Copy the log below.");
+    } finally {
+      this.exporting = false;
+      this.refresh(performance.now(), true);
+    }
+  }
+
+  private async copyLog(): Promise<void> {
+    const log = element<HTMLTextAreaElement>("head-log");
+    log.focus();
+    log.select();
+    try {
+      await navigator.clipboard.writeText(log.value);
+      text("head-log-status", "Sensor log copied.");
+    } catch {
+      text("head-log-status", "Select and copy the text below using your device's Copy command.");
+    }
   }
 }
