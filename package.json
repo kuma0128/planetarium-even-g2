@@ -1,0 +1,33 @@
+{
+  "name": "planetarium-even-g2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "pack": "npm run build && evenhub pack app.json dist --sdk-ver 0.0.15 -o g2-planetarium.ehpk"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "0.0.15",
+    "astronomy-engine": "2.1.19",
+    "geomagnetism": "0.2.0"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "0.1.14",
+    "@types/node": "^25.0.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2"
+  },
+  "description": "An English-language sky map for Even Realities G2 with time, location, and compass alignment.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kuma0128/planetarium-even-g2.git"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

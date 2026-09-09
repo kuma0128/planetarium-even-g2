@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>G2 Planetarium · Data and licenses</title>
+  <style>
+    body {
+      font: 15px/1.9 system-ui, sans-serif;
+      max-width: 760px;
+      margin: 40px auto;
+      padding: 0 24px;
+      color: #d8e7d9;
+      background: #0b1110;
+    }
+    a { color: #b8efb9; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 32px; }
+    li { margin: 12px 0; }
+    code { overflow-wrap: anywhere; }
+  </style>
+  <a href="./">← Back to the sky</a>
+  <h1>Data, calculations &amp; licenses</h1>
+  <p>
+    G2 Planetarium calculates sky-object positions locally from your observing
+    location and selected time. The catalogs and calculation data are bundled
+    with the app.
+  </p>
+  <ul>
+    <li>
+      Stars: David Nash /
+      <a href="https://github.com/astronexus/HYG-Database">HYG Database v4.1</a>.
+      This app extracts 2,865 stars through magnitude 5.5, using their J2000
+      coordinates, proper motions, magnitudes, and names. The derived catalog
+      remains licensed under
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
+      <a href="licenses/HYG.md">License and attribution</a>.
+    </li>
+    <li>
+      Constellation lines and standard names: Olaf Frohn /
+      <a href="https://github.com/ofrohn/d3-celestial">D3-Celestial</a>.
+      Contains 89 figures, with Serpens split into two parts.
+      <a href="licenses/D3-Celestial.txt">BSD 3-Clause</a>.
+    </li>
+    <li>
+      Astronomy calculations: Don Cross /
+      <a href="https://github.com/cosinekitty/astronomy">Astronomy Engine 2.1.19</a>.
+      Includes precession, nutation, lunar and planetary parallax, and normal
+      atmospheric refraction.
+      <a href="licenses/Astronomy-Engine.txt">MIT</a>.
+    </li>
+    <li>
+      Magnetic correction: Natural Atlas /
+      <a href="https://github.com/naturalatlas/geomagnetism">geomagnetism 0.2.0</a>
+      and the NOAA World Magnetic Model. Declination uses today's physical date,
+      independent of the simulated sky time.
+      <a href="licenses/Geomagnetism.txt">Apache 2.0</a>.
+    </li>
+    <li>
+      G2 integration:
+      <a href="https://hub.evenrealities.com/docs/build/device-apis">Even Hub SDK 0.0.15</a>.
+      <a href="licenses/Even-SDK.txt">MIT</a>.
+    </li>
+    <li>
+      App source code:
+      <a href="https://github.com/kuma0128/planetarium-even-g2">G2 Planetarium</a>,
+      licensed under <a href="licenses/GPL-3.0.txt">GPL-3.0-only</a>.
+      Catalogs and libraries retain their separate licenses above.
+    </li>
+  </ul>
+  <h2>Understanding the display</h2>
+  <p>
+    Buildings, weather, terrain, and light pollution are not modeled. The Sun
+    and Moon are symbols sized for visibility; their apparent diameters and the
+    Moon's phase shape are not reproduced. This is an enlarged sky map rather
+    than an optically calibrated AR overlay.
+  </p>
+  <p>
+    For phone compass mode, hold the phone flat and point its physical top edge
+    in your viewing direction. The app does not track the orientation of your
+    head or glasses. Magnetic north is the default input reference. Select
+    True north if your phone or external compass already applies magnetic
+    correction.
+  </p>
+  <p>
+    Magnetic correction is unavailable outside the model's supported dates or
+    where the horizontal magnetic field is too weak. In those cases, use a
+    true-north compass and select True north in the app.
+  </p>
+</html>

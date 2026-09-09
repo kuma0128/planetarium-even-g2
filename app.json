@@ -1,0 +1,17 @@
+{
+  "package_id": "io.github.kuma0128.planetarium",
+  "edition": "202601",
+  "name": "G2 Planetarium",
+  "version": "0.1.0",
+  "min_sdk_version": "0.0.15",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "location",
+      "desc": "Calculates star, Moon, and planet positions for your observing location. Location data stays on your device."
+    }
+  ],
+  "supported_languages": [
+    "en"
+  ]
+}

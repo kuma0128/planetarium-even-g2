@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1110" />
+    <meta
+      name="description"
+      content="Explore the sky on Even Realities G2 using your location, a selected time, and a compass heading."
+    />
+    <title>G2 Planetarium · The sky, in sight.</title>
+  </head>
+  <body>
+    <main>
+      <header class="topbar">
+        <a class="brand" href="./"
+          ><span class="brand-mark" aria-hidden="true">✦</span
+          ><span>PLANETARIUM <span class="brand-sub">/ EVEN G2</span></span></a
+        >
+        <button id="connect" class="button compact">
+          Connect G2 <span aria-hidden="true">↗</span>
+        </button>
+      </header>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">YOUR WINDOW TO THE SKY</p>
+          <h1>The sky, in sight.</h1>
+          <p class="lede">Your place. Your time. Find the stars in the direction you face.</p>
+        </div>
+        <p id="bridge-status" class="connection" role="status">
+          Browser preview
+        </p>
+      </section>
+      <div class="workspace">
+        <section class="sky-panel" aria-label="G2 sky preview">
+          <div class="panel-top">
+            <span class="eyebrow">LENS PREVIEW</span
+            ><span id="sky-period" class="pill">Now</span>
+          </div>
+          <div class="lens">
+            <p id="lens-header" class="lens-header"></p>
+            <canvas
+              id="sky"
+              width="576"
+              height="144"
+              aria-label="Sky map for the selected location, time, and heading"
+            ></canvas>
+            <p id="lens-footer" class="lens-footer"></p>
+          </div>
+          <div class="sky-meta">
+            <span id="location-label">Tokyo demo · Location not set</span
+            ><span id="light-label"></span>
+          </div>
+          <div class="view-controls">
+            <label class="inline-check"
+              ><input id="lines" type="checkbox" checked /> Constellations</label
+            >
+            <label class="inline-control"
+              >Field of view
+              <select id="fov">
+                <option value="60">60°</option>
+                <option value="100" selected>100°</option>
+                <option value="120">120°</option>
+              </select></label
+            >
+            <label class="inline-control"
+              >Star limit
+              <select id="magnitude">
+                <option value="3">Magnitude 3</option>
+                <option value="4.5" selected>Magnitude 4.5</option>
+                <option value="5.5">Magnitude 5.5</option>
+              </select></label
+            >
+          </div>
+          <p class="caption">
+            A preview of the G2 sky map. The crosshair marks your selected heading and elevation.
+          </p>
+        </section>
+        <section
+          class="direction-panel panel"
+          aria-labelledby="direction-title"
+        >
+          <div class="section-title">
+            <h2 id="direction-title">Viewing direction</h2>
+            <span id="heading-source" class="small-tag">Manual</span>
+          </div>
+          <div class="compass-wrap">
+            <div class="compass" aria-hidden="true">
+              <span class="north">N</span><span class="east">E</span
+              ><span class="south">S</span><span class="west">W</span>
+              <div id="compass-needle" class="needle"><span></span></div>
+              <i></i>
+            </div>
+            <div class="heading-readout">
+              <span id="direction-name">S</span
+              ><strong
+                ><span id="heading-readout">180</span><small>°</small></strong
+              ><span class="muted">Relative to true north</span>
+            </div>
+          </div>
+          <div class="segmented" aria-label="Heading input method">
+            <button id="manual-mode" aria-pressed="true">Manual</button
+            ><button id="phone-mode" aria-pressed="false">Phone compass</button>
+          </div>
+          <p id="compass-status" class="helper" role="status">
+            Match the heading shown on your compass.
+          </p>
+          <label class="range-label" for="heading"
+            >Compass heading <output id="heading-value">180°</output></label
+          ><input
+            id="heading"
+            type="range"
+            min="0"
+            max="359"
+            value="180"
+            step="1"
+          />
+          <div class="cardinals">
+            <button data-heading="0">N 0°</button
+            ><button data-heading="90">E 90°</button
+            ><button data-heading="180">S 180°</button
+            ><button data-heading="270">W 270°</button>
+          </div>
+          <label class="range-label" for="pitch"
+            >Elevation angle <output id="pitch-value">30°</output></label
+          ><input
+            id="pitch"
+            type="range"
+            min="0"
+            max="90"
+            value="30"
+            step="1"
+          />
+          <details>
+            <summary>North reference &amp; calibration</summary>
+            <div class="settings-fields">
+              <label
+                >Heading reference<select id="north-reference">
+                  <option value="magnetic" selected>
+                    Magnetic north
+                  </option>
+                  <option value="true">True north</option>
+                </select></label
+              >
+              <label
+                >Heading offset (degrees)<input
+                  id="offset"
+                  type="number"
+                  min="-180"
+                  max="180"
+                  step="0.5"
+                  value="0"
+              /></label>
+              <p id="declination-label" class="helper"></p>
+            </div>
+          </details>
+          <p class="caption">
+            For phone compass mode, hold your phone flat and point its top edge toward the sky you want to view. Head tracking is not supported; set the elevation manually.
+          </p>
+        </section>
+        <section class="time-panel panel" aria-labelledby="time-title">
+          <div class="section-title">
+            <h2 id="time-title">Sky time</h2>
+            <span class="small-tag">01</span>
+          </div>
+          <div class="segmented triple">
+            <button id="now" aria-pressed="true">Now</button
+            ><button id="tonight" aria-pressed="false">Tonight</button
+            ><button id="custom" aria-pressed="false">Custom</button>
+          </div>
+          <label class="datetime-label" for="date"
+            >Date and time<input id="date" type="datetime-local" step="60"
+          /></label>
+          <div class="time-step">
+            <button id="earlier">← 1 hour</button><span id="timezone"></span
+            ><button id="later">1 hour →</button>
+          </div>
+          <p id="time-note" class="helper"></p>
+        </section>
+        <section class="location-panel panel" aria-labelledby="location-title">
+          <div class="section-title">
+            <h2 id="location-title">Observing location</h2>
+            <span class="small-tag">02</span>
+          </div>
+          <button id="locate" class="button full">◎ Use current location</button>
+          <p id="location-status" class="helper" role="status">
+            Use your current location or enter coordinates below.
+          </p>
+          <form id="location-form">
+            <div class="coordinates">
+              <label
+                >Latitude<input
+                  id="latitude"
+                  type="number"
+                  min="-90"
+                  max="90"
+                  step="any"
+                  value="35.6812"
+                  required /></label
+              ><label
+                >Longitude<input
+                  id="longitude"
+                  type="number"
+                  min="-180"
+                  max="180"
+                  step="any"
+                  value="139.7671"
+                  required
+              /></label>
+            </div>
+            <button class="button subtle full" type="submit">
+              Use these coordinates
+            </button>
+          </form>
+          <p class="caption">Location data stays on your device.</p>
+        </section>
+      </div>
+      <section class="objects-section" aria-labelledby="objects-title">
+        <div class="section-title">
+          <h2 id="objects-title">Objects in this view</h2>
+          <span id="object-count" class="muted"></span>
+        </div>
+        <div id="objects" class="object-list"></div>
+        <p class="caption">
+          Shows objects above the horizon. Buildings, clouds, and local light pollution are not modeled.
+        </p>
+      </section>
+      <footer class="page-footer">
+        <span>PLANETARIUM / EVEN G2</span
+        ><span>Tap: Now / Tonight · Swipe: turn 15°</span
+        ><a href="./credits.html">Data, calculations &amp; licenses</a>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
