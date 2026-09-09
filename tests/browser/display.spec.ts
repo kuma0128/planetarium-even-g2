@@ -159,6 +159,7 @@ test("New preview frames cannot overwrite a snapshot whose tiles are still being
     const expected = ctx.getImageData(0, 0, 576, 288).data;
     for (let i = 0; i < 4; i++) {
       const bytes = frame[2 + i];
+      if (!bytes) return false;
       const data = typeof bytes === "string"
         ? Uint8Array.from(atob(bytes), char => char.charCodeAt(0))
         : new Uint8Array(bytes);
@@ -192,6 +193,47 @@ test("A refresh queued during a slow transfer survives replacement by a newer un
   await expect.poll(() => page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length), { timeout: 6000 }).toBeGreaterThanOrEqual(before + 8);
   await expectDeliveredFrame(page);
   expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
+});
+
+test("Object cards are rebuilt only when their text changes", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await page.locator("#date").fill("2026-01-15T21:00");
+  await page.locator("#date").press("Tab");
+  await page.locator("#location-form button").click();
+  await expectDeliveredFrame(page);
+  const card = (await page.locator("#objects .object").first().elementHandle())!;
+  // A render that leaves the listed objects unchanged keeps the same elements.
+  await page.locator("#sky-labels").check();
+  await expectDeliveredFrame(page);
+  expect(await card.evaluate(element => element.isConnected)).toBe(true);
+  // A new viewing direction lists other objects and replaces the cards.
+  await page.locator('[data-heading="0"]').click();
+  await expect.poll(() => card.evaluate(element => element.isConnected)).toBe(false);
+});
+
+test("Repeated connect attempts in a plain browser share one bridge announcement listener", async ({ page }) => {
+  await page.addInitScript(() => {
+    const spied = window as Window & { __bridgeListeners?: number };
+    spied.__bridgeListeners = 0;
+    const add = window.addEventListener.bind(window);
+    window.addEventListener = ((type: string, ...rest: unknown[]) => {
+      if (type === "evenAppBridgeReady") spied.__bridgeListeners!++;
+      return (add as (...args: unknown[]) => void)(type, ...rest);
+    }) as typeof window.addEventListener;
+  });
+  await page.goto("/");
+  const listeners = () => page.evaluate(() => (window as Window & { __bridgeListeners?: number }).__bridgeListeners!);
+  const attempt = async () => {
+    await page.locator("#connect").click();
+    await expect(page.locator("#bridge-status")).toContainText("Open this app through Even Hub", { timeout: 8000 });
+    await expect(page.locator("#connect")).toBeEnabled();
+  };
+  await attempt();
+  const afterFirst = await listeners();
+  expect(afterFirst).toBeGreaterThan(0);
+  await attempt();
+  expect(await listeners()).toBe(afterFirst);
 });
 
 test("Mobile browser preview keeps manual controls and reports that no native host is present", async ({

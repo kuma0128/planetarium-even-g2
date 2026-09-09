@@ -120,7 +120,7 @@ test("A stale stream cannot silently resume using an obsolete calibration", () =
   assert.equal(tracker.phase, "neutral");
 });
 
-test("Malformed frames, repeated timestamps and very old calibration samples are rejected", () => {
+test("Malformed frames, backwards timestamps and very old calibration samples are rejected", () => {
   for (const value of [
     null,
     {},
@@ -132,12 +132,31 @@ test("Malformed frames, repeated timestamps and very old calibration samples are
     assert.equal(readMotionSample(value), null);
   const tracker = new HeadTracker();
   assert.equal(tracker.receive(gravity(0), 1), true);
-  assert.equal(tracker.receive(gravity(10), 1), false);
+  assert.equal(tracker.receive(gravity(10), 0), false);
   hold(tracker, gravity(0), 100);
   assert.throws(
     () => tracker.captureForward(0, 1100),
     /fresh/,
   );
+});
+
+test("Readings that share an arrival timestamp are kept and can calibrate", () => {
+  const tracker = new HeadTracker();
+  // Buffered host delivery: several readings land in the same tick.
+  for (const time of [100, 100, 100, 400, 400])
+    assert.equal(tracker.receive(gravity(20), time), true);
+  tracker.captureForward(20, 400);
+  assert.equal(tracker.phase, "up");
+  for (const time of [600, 600, 900, 900, 900]) tracker.receive(gravity(50), time);
+  tracker.captureUp(900);
+  assert.equal(tracker.phase, "tracking");
+  const pitch = tracker.pose!.pitch;
+  assert.ok(Math.abs(pitch - 50) < 0.01);
+  // No elapsed time: the duplicate neither moves the filter nor corrupts it.
+  assert.equal(tracker.receive(gravity(0), 900), true);
+  assert.equal(tracker.pose!.pitch, pitch);
+  hold(tracker, gravity(0), 1000);
+  assert.ok(Math.abs(tracker.pose!.pitch) < 0.3);
 });
 
 test("Omitted protobuf zero axes can calibrate a level forward pose", () => {

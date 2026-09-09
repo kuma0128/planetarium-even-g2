@@ -44,7 +44,7 @@ Direction is controlled manually or with temple/ring scrolling on both iPhone an
 
 Browser location access normally requires HTTPS. G2 sensor access goes through the Even Hub SDK and does not need phone compass permission.
 
-**If Lens Preview options seem unchanged:** the note under the preview explains whether a location, G2 connection, or north reference is missing. Options apply to both the preview and G2 once these are ready. **Refresh G2 display** resends every tile, including unchanged pixels, without resetting head calibration. Rendering has a timer fallback for hosts that suspend browser animation frames. The version at the bottom of the page identifies the installed build.
+**If Lens Preview options seem unchanged:** the note under the preview explains whether a location, G2 connection, or north reference is missing. Options apply to both the preview and G2 once these are ready. **Refresh G2 display** is available while G2 is connected and resends every tile, including unchanged pixels, without resetting head calibration. Rendering has a timer fallback for hosts that suspend browser animation frames. The version at the bottom of the page identifies the installed build.
 
 ## Load on G2
 
@@ -82,9 +82,9 @@ The reference button records the direction you supply; it does not measure north
 
 Samples with a large magnitude change are ignored as possible acceleration. This cannot eliminate every movement artifact. Missing or unusable readings for 1.5 seconds freeze the last elevation and invalidate calibration; new readings alone never silently reactivate it. Disconnecting, leaving the **G2 foreground**, closing the page, or stopping also ends the sensor session. Hiding just the phone view does not stop tracking; continued updates depend on the Even host keeping JavaScript and the sensor stream alive.
 
-A successful sensor-start response alone does not prove that readings are arriving. **Waiting for sensor** keeps the reference button disabled until a sample arrives; capture requires at least four fresh, steady readings. The diagnostics show received and unusable message counts. Omitted zero-valued protobuf axes are decoded as zero; empty or invalid messages are rejected.
+A successful sensor-start response alone does not prove that readings are arriving. **Waiting for sensor** keeps the reference button disabled until a sample arrives; capture requires at least four fresh, steady readings. The diagnostics show received and unusable message counts. Omitted zero-valued protobuf axes are decoded as zero; empty or invalid messages are rejected, and readings that share an arrival timestamp are kept.
 
-**Save or share sensor log** exports the last 600 raw samples with monotonic arrival times from session start, calibration markers, the captured reference, and the latest host-transfer duration as JSON. It opens file sharing when supported, otherwise requests a download. The same JSON remains visible with a **Copy sensor log** button; if clipboard access is unavailable, select and copy the text using your device's Copy command. Coordinates are not included, and the app does not automatically upload the log. `P100` is the selected SDK pacing code; it is not a claim of 100 Hz. The UI reports the observed arrival rate. Tracking renders and requests display updates at most every 100 ms, keeps only the latest waiting frame, and skips unchanged tiles/captions. Real optical refresh rate and latency still need measurement on G2; host acceptance does not establish either.
+**Save or share sensor log** exports the last 600 raw samples with monotonic arrival times from session start, calibration markers, the captured reference, and the latest host-transfer duration as JSON. It opens file sharing when supported, otherwise requests a download. The same JSON remains visible with a **Copy sensor log** button; if clipboard access is unavailable, select and copy the text using your device's Copy command. Coordinates are not included, and the app does not automatically upload the log. `P100` is the selected SDK pacing code; it is not a claim of 100 Hz. The UI reports the observed arrival rate. While the G2 sensor is running, including during calibration, the app renders and requests display updates at most every 100 ms, keeps only the latest waiting frame, and skips unchanged tiles/captions. Real optical refresh rate and latency still need measurement on G2; host acceptance does not establish either.
 
 ## Development
 
@@ -95,7 +95,7 @@ npm run test:browser
 npm run pack
 ```
 
-The automated tests cover astronomy and projection, magnetic correction, manual heading correction, direction-reference calibration across axes and mounting angles, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, simultaneous head tilt and touchpad scrolling, north wrapping, stop/reconnect, slow frame transfers, log export, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
+The automated tests cover astronomy and projection, magnetic correction and its polar blackout zone, manual heading correction, direction-reference calibration across axes and mounting angles, roll compensation, realignment without reconnecting, stale/invalid readings, and serialized sensor/frame delivery. Browser tests use the real SDK with a mock native host to exercise calibration, simultaneous head tilt and touchpad scrolling, north wrapping, stop/reconnect, slow frame transfers, retried tile rejections, render throttling during calibration, page restarts after pagehide, log export, and mobile layout. They do not simulate the optical hardware or prove real IMU semantics. CI runs both test suites and packaging.
 
 The browser preview supports desktop and mobile layouts.
 
@@ -113,7 +113,7 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 - `src/head-controls.ts`: live sensor controls, guided calibration, diagnostics, and local log export.
 - `src/motion-stream.ts`: serializes sensor start/stop calls, including rapid stop and reconnect.
 - `src/render.ts`: a 576 × 288 pixel display frame, with a full-height or compact 144-pixel sky viewport and optional captions/labels. Symbol sizes help identify objects; they do not reproduce apparent diameters or the shape of the Moon's phase.
-- `src/glasses.ts`: four 288 × 144 PNG tiles cover the G2 display. A blank text container behind the images captures gestures without reserving a visible text area. Every tile is sent sequentially through the official SDK; unchanged tiles are skipped. Switching display options does not rebuild the page or interrupt head tracking.
+- `src/glasses.ts`: four 288 × 144 PNG tiles cover the G2 display. A blank text container behind the images captures gestures without reserving a visible text area. Every tile is sent sequentially through the official SDK; unchanged tiles are skipped, and a tile the host rejects is retried once before the session stops. Switching display options does not rebuild the page or interrupt head tracking.
 - `src/frame-queue.ts`: keeps only the latest pending frame while a send is in progress. A host acknowledgment is treated as acceptance of the update, not proof of optical rendering.
 
 The map is an enlarged view of the sky, not an optically calibrated AR overlay. Buildings, terrain, weather, and light pollution are not modeled. Head tracking changes the map's viewing direction; matching the optical display's field of view, gaze offset, and real stars would require additional calibration and hardware validation.

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import geomagnetism from "geomagnetism";
 import {
   magneticDeclination,
   trueHeading,
@@ -23,4 +24,11 @@ test("World Magnetic Model gives a westerly declination in Tokyo and fails close
     magneticDeclination(tokyo, new Date("2100-01-01T00:00:00Z")),
     null,
   );
+});
+test("A weak horizontal field near the magnetic pole fails closed although the model has a value", () => {
+  const date = new Date("2026-09-10T00:00:00Z");
+  const nearPole = { latitude: 86, longitude: 140, height: 0 };
+  const field = geomagnetism.model(date).point([86, 140, 0]);
+  assert.ok(Number.isFinite(field.decl) && field.h < 2000);
+  assert.equal(magneticDeclination(nearPole, date), null);
 });

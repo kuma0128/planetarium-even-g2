@@ -93,7 +93,12 @@ export class HeadControls {
     }
     const phase = this.tracker.phase;
     const recovering = now - this.tracker.lastSampleAt > MOTION_TIMEOUT_MS;
-    if (!this.tracker.accept(sample, now)) return;
+    if (!this.tracker.accept(sample, now)) {
+      // Only a clock running backwards is refused; keep received = kept + unusable.
+      this.rejectedCount++;
+      this.changed();
+      return;
+    }
     this.samples.push({ ...sample, time: now });
     if (this.samples.length > 600) this.samples.shift();
     if (phase !== this.tracker.phase) {
@@ -221,10 +226,8 @@ export class HeadControls {
       !this.enabled || this.busy || (!this.referencePose && !this.pose);
     const last = this.samples.at(-1);
     const recent = this.samples.filter((s) => now - s.time <= 2000);
-    const hz =
-      recent.length > 1
-        ? ((recent.length - 1) * 1000) / (recent.at(-1)!.time - recent[0]!.time)
-        : 0;
+    const span = recent.length > 1 ? recent.at(-1)!.time - recent[0]!.time : 0;
+    const hz = span > 0 ? ((recent.length - 1) * 1000) / span : 0;
     text("head-sample-rate", `${hz.toFixed(1)} samples/s`);
     text(
       "head-sample-age",

@@ -81,6 +81,7 @@ export class GlassesDisplay {
   private refreshRequested = 0;
   private refreshSent = 0;
   private connecting: Promise<void> | null = null;
+  private bridgeRequest: Promise<EvenAppBridge> | null = null;
   private active = false;
   private inForeground = false;
   private foregroundRevision = 0;
@@ -121,7 +122,7 @@ export class GlassesDisplay {
       );
       if (generation !== this.generation) return;
       const bridge = await withTimeout(
-        this.acquireBridge(),
+        this.awaitBridge(),
         6000,
         "Open this app through Even Hub in the Even app. A regular browser provides a preview.",
       );
@@ -282,6 +283,18 @@ export class GlassesDisplay {
       throw error;
     }
   }
+  /**
+   * The SDK's bridge wait registers a listener it never removes. Share one
+   * pending request so repeated Connect attempts in a plain browser do not
+   * accumulate listeners; a settled request is dropped so a later connect
+   * still sees the host's current bridge.
+   */
+  private awaitBridge(): Promise<EvenAppBridge> {
+    this.bridgeRequest ??= this.acquireBridge().finally(() => {
+      this.bridgeRequest = null;
+    });
+    return this.bridgeRequest;
+  }
   async setMotionEnabled(enabled: boolean): Promise<void> {
     if (!this.active || !this.motion) {
       if (enabled)
@@ -362,16 +375,16 @@ export class GlassesDisplay {
         continue;
       const imageData = await pngBytes(tile);
       if (!this.canSend(generation, frame.foregroundRevision)) return;
-      const result = await bridge.updateImageRawData(
-        new ImageRawDataUpdate({
-          containerID: 2 + i,
-          containerName: `sky-tile-${i}`,
-          imageData,
-        }),
-      );
+      let failure = await this.sendTile(bridge, i, imageData);
       if (!this.canSend(generation, frame.foregroundRevision)) return;
-      if (result !== ImageRawDataUpdateResult.success)
-        throw new Error(`Could not send the sky map (${result}).`);
+      if (failure) {
+        // One rejected tile must not end the session and head tracking. A
+        // second failure in a row still does, so a dead link is not hidden.
+        this.onStatus(`Retrying a sky-map tile. ${failure}`);
+        failure = await this.sendTile(bridge, i, imageData);
+        if (!this.canSend(generation, frame.foregroundRevision)) return;
+      }
+      if (failure) throw new Error(failure);
       cachedPixels[i] = pixels;
     }
     // This acknowledgement confirms acceptance by the host, not optical delivery.
@@ -379,6 +392,27 @@ export class GlassesDisplay {
       this.refreshSent = refresh;
       this.hooks.onFrameSent?.(performance.now() - startedAt);
       this.onStatus("Sky map sent to G2.");
+    }
+  }
+  /** Send one tile; resolve with null on success or with the failure text. */
+  private async sendTile(
+    bridge: EvenAppBridge,
+    index: number,
+    imageData: Uint8Array,
+  ): Promise<string | null> {
+    try {
+      const result = await bridge.updateImageRawData(
+        new ImageRawDataUpdate({
+          containerID: 2 + index,
+          containerName: `sky-tile-${index}`,
+          imageData,
+        }),
+      );
+      return result === ImageRawDataUpdateResult.success
+        ? null
+        : `Could not send the sky map (${result}).`;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
     }
   }
   stop(): void {

@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b1110" />
+    <!-- Plugins and <base> injection are never needed. Script and style sources
+         are not restricted here: the Even Hub host's page origin (file or http)
+         is unverified and 'self' would not match a file: document. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'none'"
+    />
     <meta
       name="description"
       content="Explore the sky on Even Realities G2 using your location, a selected time, and a compass heading."

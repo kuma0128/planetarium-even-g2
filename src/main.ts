@@ -148,7 +148,9 @@ function requestRender(): void {
     if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
     renderState.timer = renderState.animation = undefined;
     const now = performance.now();
-    const wait = head.active ? 100 - (now - renderState.lastRender) : 0;
+    // Samples arrive at up to 100 Hz from Start G2 sensor onwards, not only
+    // once tracking begins: throttle every render while the stream is running.
+    const wait = head.enabled ? 100 - (now - renderState.lastRender) : 0;
     if (wait > 0) {
       renderState.timer = window.setTimeout(flush, wait);
       return;
@@ -255,7 +257,7 @@ function updateGlasses(frameKey: string, heading: number | null, now: number): v
             : "Options apply to this preview and G2. Allow a few seconds for the glasses to update.",
   );
   element<HTMLButtonElement>("refresh-display").disabled =
-    !observing.location || heading == null;
+    !observing.location || heading == null || !glasses.connected;
   if (
     glasses.foreground &&
     observing.location &&
@@ -390,7 +392,11 @@ async function connect(): Promise<void> {
   }
 }
 element("connect").onclick = connect;
-element("refresh-display").onclick = connect;
+element("refresh-display").onclick = () => {
+  // Resend every tile of the current view; reconnecting is Connect G2's job.
+  resetDelivery();
+  requestRender();
+};
 const autoConnect = () => {
   if (
     (window as Window & { flutter_inappwebview?: unknown })
@@ -418,5 +424,8 @@ window.addEventListener("pagehide", () => {
 // disconnect and system-exit events still stop the sensor session.
 document.addEventListener("visibilitychange", requestRender);
 window.addEventListener("pageshow", (event) => {
-  if (event.persisted) window.location.reload();
+  // pagehide disposed the timers and the G2 session. Restart from a clean load
+  // whether the browser restored the page from its cache or a WebView showed
+  // the same document again without marking it as persisted.
+  if (event.persisted || renderState.disposed) window.location.reload();
 });

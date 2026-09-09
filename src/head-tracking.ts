@@ -71,7 +71,9 @@ export class HeadTracker {
 
   /** Accept a reading that readMotionSample has already validated. */
   accept(sample: MotionSample, now: number): boolean {
-    if (!Number.isFinite(now) || now <= this.lastSampleAt) return false;
+    // Hosts can deliver buffered samples in one tick and coarse clocks repeat a
+    // timestamp: keep equal times and refuse only a clock running backwards.
+    if (!Number.isFinite(now) || now < this.lastSampleAt) return false;
     this.expire(now);
     this.lastSampleAt = now;
     this.samples = this.samples.filter((s) => now - s.time <= 1000);

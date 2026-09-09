@@ -26,6 +26,15 @@ const timeLabels: Record<TimeMode, string> = {
   tonight: "Tonight",
   custom: "Custom",
 };
+// Date.toLocaleString builds a formatter on every call; renders run at up to 10 Hz.
+const timeFormat = new Intl.DateTimeFormat("en-GB", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZoneName: "short",
+});
 
 export function renderView(
   canvas: HTMLCanvasElement,
@@ -56,14 +65,7 @@ export function renderView(
     heading == null
       ? "Check north reference"
       : `${direction(heading)} ${Math.round(heading) % 360}°`;
-  const timeLabel = time.toLocaleString("en-GB", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  const timeLabel = timeFormat.format(time);
   const header = display.showInfo
     ? `${modeLabel} ${timeLabel}\n${location ? "" : "Tokyo demo / "}${headingLabel}  Alt ${Math.round(options.pitch)}°  ${headingSource}`
     : "";
@@ -112,19 +114,29 @@ export function renderView(
   return { header, footer };
 }
 
+let renderedObjects = "";
 function renderObjects(targets: SkyObject[]): void {
+  const rows = targets.map((object): [string, string] => [
+    object.name,
+    `${direction(object.azimuth)} ${object.azimuth.toFixed(0)}° · Alt ${object.altitude.toFixed(0)}° · ${object.kind === "star" ? `mag ${object.magnitude.toFixed(1)}` : object.kind === "moon" ? "Moon" : "Planet"}`,
+  ]);
+  // Renders run at up to 10 Hz during head tracking. Rebuild the cards only
+  // when their visible text changes instead of on every frame.
+  const key = JSON.stringify(rows);
+  if (key === renderedObjects) return;
+  renderedObjects = key;
   const list = element("objects");
   list.replaceChildren();
-  for (const object of targets) {
+  for (const [name, summary] of rows) {
     const card = document.createElement("div");
     card.className = "object";
     const dot = document.createElement("span");
     dot.className = "object-dot";
     const description = document.createElement("div");
     const title = document.createElement("strong");
-    title.textContent = object.name;
+    title.textContent = name;
     const detail = document.createElement("p");
-    detail.textContent = `${direction(object.azimuth)} ${object.azimuth.toFixed(0)}° · Alt ${object.altitude.toFixed(0)}° · ${object.kind === "star" ? `mag ${object.magnitude.toFixed(1)}` : object.kind === "moon" ? "Moon" : "Planet"}`;
+    detail.textContent = summary;
     description.append(title, detail);
     card.append(dot, description);
     list.append(card);

@@ -92,6 +92,56 @@ for (const failure of ["result", "throw"] as const) {
   });
 }
 
+for (const failure of ["result", "throw"] as const) {
+  test(`A single rejected tile (${failure}) is retried without ending the session or head tracking`, async ({ page }) => {
+    await host(page);
+    await page.goto("/");
+    await reference(page);
+    await calibrateTilt(page);
+    await expectDeliveredFrame(page);
+    const sensorTimer = await page.evaluate(sample =>
+      window.setInterval(() => window.__g2Test.emit(sample), 100), gravity(60));
+    try {
+      const before = await page.evaluate(failure => {
+        window.__g2Test.images = {};
+        window.__g2Test.nextImageFailure = failure;
+        return window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length;
+      }, failure);
+      await page.locator("#refresh-display").click();
+      await expectDeliveredFrame(page);
+      // Four forced tiles plus the retry of the rejected one.
+      expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "updateImageRawData").length)).toBeGreaterThanOrEqual(before + 5);
+      await expect(page.locator("#bridge-status")).toHaveText("Sky map sent to G2.");
+      await expect(page.locator("#head-state")).toHaveText("Tracking");
+      expect(await page.evaluate(() => window.__g2Test.motion)).toBe(true);
+      expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
+      expect(await page.evaluate(() => window.__g2Test.maxImageInFlight)).toBe(1);
+    } finally {
+      await page.evaluate(timer => window.clearInterval(timer), sensorTimer);
+    }
+  });
+}
+
+test("Showing the page again after pagehide restarts it even without a cache restore", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  await page.locator("#head-start").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+  await page.evaluate(() => {
+    (window as Window & { __sameDocument?: boolean }).__sameDocument = true;
+    window.dispatchEvent(new Event("pagehide"));
+  });
+  await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(false);
+  const reloaded = page.waitForEvent("load");
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false })),
+  ).catch(() => {});
+  await reloaded;
+  expect(await page.evaluate(() => (window as Window & { __sameDocument?: boolean }).__sameDocument)).toBeUndefined();
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+});
+
 test("A rejected sensor close does not poison subsequent reconnects", async ({ page }) => {
   await host(page);
   await page.goto("/");
@@ -178,9 +228,12 @@ for (const eventType of [6, 7]) {
     await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(false);
     await page.locator("#location-form button").click();
     await expect(page.locator("#preview-status")).toContainText("Connect G2");
+    // Refresh only resends tiles; reconnecting stays with Connect G2.
+    await expect(page.locator("#refresh-display")).toBeDisabled();
     expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "updateImageRawData"))).toBe(false);
     await page.locator("#connect").click();
     await expectDeliveredFrame(page);
+    await expect(page.locator("#refresh-display")).toBeEnabled();
   });
 }
 

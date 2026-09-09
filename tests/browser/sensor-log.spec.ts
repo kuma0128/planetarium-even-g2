@@ -44,7 +44,7 @@ for (const outcome of ["success", "cancel", "failure", "unsupported"] as const) 
       Object.defineProperty(navigator, "share", { configurable: true, value: async ({ files }: ShareData) => {
         if (outcome === "cancel") throw new DOMException("Cancelled", "AbortError");
         if (outcome === "failure") throw new DOMException("Unavailable", "NotAllowedError");
-        state.sharedLog = await files![0].text();
+        state.sharedLog = await files![0]!.text();
       } });
       // Model a WebView that ignores downloads and may deny clipboard access.
       HTMLAnchorElement.prototype.click = () => { state.downloadAttempts++; };

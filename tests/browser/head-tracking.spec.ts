@@ -113,8 +113,32 @@ test("Tracking coalesces frequent sensor updates into at most ten renders per se
   });
   expect(renders.length).toBeGreaterThan(3);
   for (let i = 1; i < renders.length; i++)
-    expect(renders[i] - renders[i - 1]).toBeGreaterThanOrEqual(95);
+    expect(renders[i]! - renders[i - 1]!).toBeGreaterThanOrEqual(95);
   await expectDeliveredFrame(page);
+});
+
+test("Calibration also coalesces frequent sensor updates into at most ten renders per second", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await page.locator("#date").fill("2026-01-15T21:00");
+  await page.locator("#date").press("Tab");
+  await reference(page);
+  await page.locator("#head-start").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.motion)).toBe(true);
+  const renders = await page.evaluate(async () => {
+    const state = window.__g2Test;
+    state.renderTimes = [];
+    for (let i = 0; i < 60; i++) {
+      const pitch = (20 + i / 2) * Math.PI / 180;
+      state.emit({ x: Math.sin(pitch), y: 0, z: Math.cos(pitch) });
+      await new Promise(resolve => setTimeout(resolve, 16));
+    }
+    return state.renderTimes;
+  });
+  expect(renders.length).toBeGreaterThan(3);
+  for (let i = 1; i < renders.length; i++)
+    expect(renders[i]! - renders[i - 1]!).toBeGreaterThanOrEqual(95);
+  await expect(page.locator("#align-direction")).toBeEnabled();
 });
 
 test("Stale sensor readings freeze the map and require calibration before resuming", async ({
