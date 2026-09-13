@@ -82,6 +82,7 @@ export class GlassesDisplay {
   private refreshRequested = 0;
   private refreshSent = 0;
   private connecting: Promise<void> | null = null;
+  private creatingPage: Promise<void> = Promise.resolve();
   private bridgeRequest: Promise<EvenAppBridge> | null = null;
   private active = false;
   private inForeground = false;
@@ -112,12 +113,12 @@ export class GlassesDisplay {
     this.active = false;
     this.onStatus("Connecting to the Even app…");
     try {
-      // A stopped queue may still have an in-flight native image call. Drain it
-      // before rebuilding the page so a reconnect never overlaps image sends.
+      // Native image, sensor and page-creation calls cannot be cancelled.
+      // Drain them before a retry can rebuild the page underneath an old call.
       this.queue?.stop();
       this.closeMotion();
       await withTimeout(
-        Promise.all([this.queue?.idle(), this.closingMotion]),
+        Promise.all([this.queue?.idle(), this.closingMotion, this.creatingPage]),
         4000,
         "The previous G2 session is still waiting for the Even app. Check the connection, then retry Connect G2 or reopen the app.",
       );
@@ -130,48 +131,11 @@ export class GlassesDisplay {
       if (generation !== this.generation) return;
       this.bridge = bridge;
       this.pixels = [];
-      const result = await bridge.createStartUpPageContainer(
-        new CreateStartUpPageContainer({
-          containerTotalNum: 5,
-          textObject: [
-            new TextContainerProperty({
-              containerID: 1,
-              containerName: "sky-events",
-              xPosition: 0,
-              yPosition: 0,
-              width: MAP_WIDTH,
-              height: DISPLAY_HEIGHT,
-              content: "",
-              borderWidth: 0,
-              paddingLength: 0,
-              isEventCapture: 1,
-              zOrderIndex: 0,
-            }),
-          ],
-          // The four front tiles cover the blank event container completely.
-          // Gestures still use its single isEventCapture target.
-          imageObject: Array.from({ length: 4 }, (_, i) =>
-            new ImageContainerProperty({
-              containerID: 2 + i,
-              containerName: `sky-tile-${i}`,
-              xPosition: (i % 2) * TILE_WIDTH,
-              yPosition: Math.floor(i / 2) * TILE_HEIGHT,
-              width: TILE_WIDTH,
-              height: TILE_HEIGHT,
-              zOrderIndex: i + 1,
-            }),
-          ),
-        }),
-      );
-      if (generation !== this.generation) return;
-      if (result !== StartUpPageCreateResult.success)
-        throw new MessageError(
-          message("Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.", String(result)),
-        );
+      // Subscribe before asking the host to create the page. An exit or a
+      // disconnect can arrive while its acknowledgement is still pending.
+      // Assume foreground only until an event supplies the actual state.
+      this.inForeground = true;
       this.unsubscribe?.();
-      this.motion = new MotionStream((enabled) =>
-        bridge.imuControl(enabled, ImuReportPace.P100),
-      );
       this.unsubscribe = bridge.onEvenHubEvent((event) => {
         if (generation !== this.generation) return;
         if (event.sysEvent?.eventType === OsEventTypeList.IMU_DATA_REPORT) {
@@ -207,14 +171,7 @@ export class GlassesDisplay {
           event.sysEvent?.eventType ??
           event.textEvent?.eventType ??
           event.listEvent?.eventType;
-        if (type === OsEventTypeList.CLICK_EVENT) this.onGesture("tap");
-        else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-          void bridge
-            .shutDownPageContainer(1)
-            .catch((error) =>
-              this.onStatus(message("Could not open the exit dialog. {0}", errorMessage(error))),
-            );
-        } else if (
+        if (
           type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
           type === OsEventTypeList.ABNORMAL_EXIT_EVENT
         ) {
@@ -223,6 +180,17 @@ export class GlassesDisplay {
           this.onStatus(abnormal
             ? "G2 display closed unexpectedly. Reconnect to resume."
             : "G2 display closed.");
+          return;
+        }
+        // Lifecycle events matter during startup; gestures require a ready page.
+        if (!this.foreground) return;
+        if (type === OsEventTypeList.CLICK_EVENT) this.onGesture("tap");
+        else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+          void bridge
+            .shutDownPageContainer(1)
+            .catch((error) =>
+              this.onStatus(message("Could not open the exit dialog. {0}", errorMessage(error))),
+            );
         } else if (type === OsEventTypeList.SCROLL_TOP_EVENT)
           this.onGesture("left");
         else if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT)
@@ -246,6 +214,54 @@ export class GlassesDisplay {
           this.onStatus("G2 disconnected. Reconnect to resume.");
         }
       });
+      const creation = bridge.createStartUpPageContainer(
+        new CreateStartUpPageContainer({
+          containerTotalNum: 5,
+          textObject: [
+            new TextContainerProperty({
+              containerID: 1,
+              containerName: "sky-events",
+              xPosition: 0,
+              yPosition: 0,
+              width: MAP_WIDTH,
+              height: DISPLAY_HEIGHT,
+              content: "",
+              borderWidth: 0,
+              paddingLength: 0,
+              isEventCapture: 1,
+              zOrderIndex: 0,
+            }),
+          ],
+          // The four front tiles cover the blank event container completely.
+          // Gestures still use its single isEventCapture target.
+          imageObject: Array.from({ length: 4 }, (_, i) =>
+            new ImageContainerProperty({
+              containerID: 2 + i,
+              containerName: `sky-tile-${i}`,
+              xPosition: (i % 2) * TILE_WIDTH,
+              yPosition: Math.floor(i / 2) * TILE_HEIGHT,
+              width: TILE_WIDTH,
+              height: TILE_HEIGHT,
+              zOrderIndex: i + 1,
+            }),
+          ),
+        }),
+      );
+      // Retain the native operation after a timeout so retries cannot overlap it.
+      this.creatingPage = creation.then(() => {}, () => {});
+      const result = await withTimeout(
+        creation,
+        6000,
+        "The Even app did not finish creating the G2 display in time. Check the connection, then retry Connect G2 or reopen the app.",
+      );
+      if (generation !== this.generation) return;
+      if (result !== StartUpPageCreateResult.success)
+        throw new MessageError(
+          message("Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.", String(result)),
+        );
+      this.motion = new MotionStream((enabled) =>
+        bridge.imuControl(enabled, ImuReportPace.P100),
+      );
       void bridge
         .getDeviceInfo()
         .then((info) => {
@@ -255,7 +271,6 @@ export class GlassesDisplay {
         .catch(() => {});
       if (generation !== this.generation) return;
       this.active = true;
-      this.inForeground = true;
       this.queue?.stop();
       this.queue = new LatestFrameQueue(
         (frame) => {
@@ -280,7 +295,14 @@ export class GlassesDisplay {
       this.hooks.onConnected?.();
     } catch (error) {
       if (generation !== this.generation) return;
+      // Failed startup must not retain subscriptions or accept late events.
+      this.generation++;
       this.active = false;
+      this.inForeground = false;
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      this.unsubscribeDevice?.();
+      this.unsubscribeDevice = null;
       this.onStatus(errorMessage(error));
       throw error;
     }

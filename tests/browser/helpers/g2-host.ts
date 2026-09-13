@@ -12,6 +12,11 @@ type Host = {
   failMotionStop: boolean;
   blockImages: boolean;
   blockMotionStop: boolean;
+  blockStartup: boolean;
+  startupResult: 0 | 1 | "throw";
+  startupInFlight: number;
+  maxStartupInFlight: number;
+  releaseStartup: () => void;
   deviceInfo: { model: string; sn: string } | null;
   failDeviceInfo: boolean;
   blockDeviceInfo: boolean;
@@ -39,7 +44,7 @@ declare global {
 
 export async function host(
   page: Page,
-  options: Partial<Pick<Host, "deviceInfo" | "failDeviceInfo" | "blockDeviceInfo" | "locationResult">> = {},
+  options: Partial<Pick<Host, "deviceInfo" | "failDeviceInfo" | "blockDeviceInfo" | "locationResult" | "blockStartup" | "startupResult">> = {},
 ): Promise<void> {
   await page.addInitScript((options) => {
     const state: Host = (window.__g2Test = {
@@ -53,6 +58,11 @@ export async function host(
       failMotionStop: false,
       blockImages: false,
       blockMotionStop: false,
+      blockStartup: false,
+      startupResult: 0,
+      startupInFlight: 0,
+      maxStartupInFlight: 0,
+      releaseStartup: () => {},
       deviceInfo: { model: "g2", sn: "test-g2" },
       failDeviceInfo: false,
       blockDeviceInfo: false,
@@ -103,7 +113,19 @@ export async function host(
                 ? { containerID: data.containerID }
                 : data,
           });
-          if (method === "createStartUpPageContainer") return 0;
+          if (method === "createStartUpPageContainer") {
+            const result = state.startupResult;
+            state.startupInFlight++;
+            state.maxStartupInFlight = Math.max(state.maxStartupInFlight, state.startupInFlight);
+            try {
+              if (state.blockStartup)
+                await new Promise<void>(resolve => { state.releaseStartup = resolve; });
+              if (result === "throw") throw new Error("Startup rejected by host");
+              return result;
+            } finally {
+              state.startupInFlight--;
+            }
+          }
           if (method === "getGlassesInfo") {
             if (state.failDeviceInfo) throw new Error("Device info unavailable");
             const info = state.deviceInfo;
