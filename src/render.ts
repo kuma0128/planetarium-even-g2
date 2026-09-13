@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import {
   direction,
   project,
@@ -84,7 +85,7 @@ export function renderSky(
     if (options.labels !== false && within(p, 12)) {
       ctx.fillStyle = "#aaa";
       ctx.font = "12px sans-serif";
-      ctx.fillText(direction(azimuth), p!.x + 3, p!.y - 3);
+      ctx.fillText(t(direction(azimuth)), p!.x + 3, p!.y - 3);
     }
   }
   // Constellation lines are densified along great circles in sky.ts, so they
@@ -125,7 +126,8 @@ export function renderSky(
     if (options.labels === false || !object.name || (object.kind === "star" && object.magnitude > 2.6))
       continue;
     ctx.font = "12px sans-serif";
-    const width = ctx.measureText(object.name).width;
+    const label = t(object.name);
+    const width = ctx.measureText(label).width;
     const x = Math.min(canvas.width - width - 3, p.x + 7),
       y = Math.max(14, p.y - 5);
     if (
@@ -139,7 +141,7 @@ export function renderSky(
       continue;
     occupied.push({ x, y, width });
     ctx.fillStyle = "#ddd";
-    ctx.fillText(object.name, x, y);
+    ctx.fillText(label, x, y);
   }
   ctx.strokeStyle = "#888";
   ctx.beginPath();
@@ -169,21 +171,16 @@ export function renderCaptions(
     if (!content) continue;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, top, canvas.width, height);
-    const lines: string[] = [];
-    for (const paragraph of content.split("\n")) {
-      let line = "";
-      for (const word of paragraph.split(" ")) {
-        const next = line ? `${line} ${word}` : word;
-        if (line && ctx.measureText(next).width > canvas.width - 4) {
-          lines.push(line);
-          line = word;
-        } else line = next;
-      }
-      lines.push(line);
-    }
+    const measure = (value: string) => ctx.measureText(value).width;
+    const availableWidth = canvas.width - 4;
+    const lines = wrapCaption(content, availableWidth, measure);
     const maxLines = Math.floor(height / lineHeight);
     const visible = lines.slice(0, maxLines);
-    if (lines.length > maxLines) visible[maxLines - 1] += "…";
+    if (lines.length > maxLines) {
+      const last = Array.from(visible[maxLines - 1]!);
+      while (last.length && measure(`${last.join("")}…`) > availableWidth) last.pop();
+      visible[maxLines - 1] = `${last.join("")}…`;
+    }
     ctx.fillStyle = "#fff";
     ctx.save();
     ctx.beginPath();
@@ -193,6 +190,32 @@ export function renderCaptions(
     ctx.restore();
   }
   ctx.restore();
+}
+
+/** Wrap words normally, but split long unspaced CJK text to the display width. */
+export function wrapCaption(content: string, width: number, measure: (text: string) => number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of content.split("\n")) {
+    let line = "";
+    for (const word of paragraph.split(" ")) {
+      const next = line ? `${line} ${word}` : word;
+      if (measure(next) <= width) {
+        line = next;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = "";
+      for (const character of Array.from(word)) {
+        if (line && measure(line + character) > width) {
+          lines.push(line);
+          line = "";
+        }
+        line += character;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
 }
 
 export function pngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {

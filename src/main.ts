@@ -15,10 +15,15 @@ import {
 } from "./compass.ts";
 import { GlassesDisplay } from "./glasses.ts";
 import { HeadControls } from "./head-controls.ts";
-import { element, input, pressed, text } from "./dom.ts";
+import { bindDocumentTranslations, element, input, pressed, text } from "./dom.ts";
+import { getLanguage, message, restoreLanguage, setLanguage } from "./i18n.ts";
 import { renderView, type TimeMode } from "./view.ts";
 import { version } from "../package.json";
 
+restoreLanguage();
+const localizeDocument = bindDocumentTranslations();
+localizeDocument();
+input("language").value = getLanguage();
 const canvas = element<HTMLCanvasElement>("sky");
 const sampleLocation: Location = {
   latitude: 35.6812,
@@ -106,7 +111,7 @@ function setTimeMode(mode: TimeMode): void {
   if (mode === "tonight") {
     const night = tonight(new Date(), observing.location || sampleLocation);
     observing.time = night.time;
-    text("time-note", `${night.note} The selected sky time stays fixed.`);
+    text("time-note", message("{0} The selected sky time stays fixed.", night.note));
   }
   if (mode === "custom")
     text(
@@ -229,6 +234,7 @@ function render(): void {
     footerOverride: head.glassesHint,
   }, display);
   const frameKey = JSON.stringify([
+    getLanguage(),
     skyCache.key,
     options.heading,
     options.pitch,
@@ -281,6 +287,13 @@ function updateGlasses(frameKey: string, heading: number | null, now: number): v
   }
 }
 
+input("language").onchange = () => {
+  setLanguage(input("language").value);
+  localizeDocument();
+  head.refresh(performance.now(), true);
+  resetDelivery();
+  requestRender();
+};
 input("heading").oninput = () => setHeading(Number(input("heading").value));
 for (const button of document.querySelectorAll<HTMLButtonElement>(
   "[data-heading]",

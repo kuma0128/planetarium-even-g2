@@ -24,7 +24,7 @@
     "typescript": "5.9.3",
     "vite": "8.2.2"
   },
-  "description": "An English-language sky map for Even Realities G2 with time, location, and compass alignment.",
+  "description": "A sky map for Even Realities G2 in English, Japanese, Korean, and Simplified Chinese, with time, location, and compass alignment.",
   "repository": {
     "type": "git",
     "url": "https://github.com/kuma0128/planetarium-even-g2.git"

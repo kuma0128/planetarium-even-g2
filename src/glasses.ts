@@ -1,3 +1,4 @@
+import { errorMessage, message, MessageError, type Message } from "./i18n.ts";
 import {
   AppLocationAccuracy,
   CreateStartUpPageContainer,
@@ -87,7 +88,7 @@ export class GlassesDisplay {
   private foregroundRevision = 0;
   private generation = 0;
   constructor(
-    private onStatus: (status: string) => void,
+    private onStatus: (status: Message) => void,
     private onGesture: (gesture: "tap" | "left" | "right") => void,
     private hooks: GlassesHooks = {},
     private acquireBridge: () => Promise<EvenAppBridge> = waitForEvenAppBridge,
@@ -164,8 +165,8 @@ export class GlassesDisplay {
       );
       if (generation !== this.generation) return;
       if (result !== StartUpPageCreateResult.success)
-        throw new Error(
-          `Could not create the G2 display (${result}). Open this app through Even Hub and check the glasses connection.`,
+        throw new MessageError(
+          message("Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.", String(result)),
         );
       this.unsubscribe?.();
       this.motion = new MotionStream((enabled) =>
@@ -196,7 +197,7 @@ export class GlassesDisplay {
           // Their late results must not stop or acknowledge the resumed session.
           this.foregroundRevision++;
           void this.setMotionEnabled(false).catch((error) =>
-            this.onStatus(String(error)),
+            this.onStatus(errorMessage(error)),
           );
           this.hooks.onMotionStopped?.("G2 left the foreground");
           return;
@@ -211,7 +212,7 @@ export class GlassesDisplay {
           void bridge
             .shutDownPageContainer(1)
             .catch((error) =>
-              this.onStatus(`Could not open the exit dialog. ${String(error)}`),
+              this.onStatus(message("Could not open the exit dialog. {0}", errorMessage(error))),
             );
         } else if (
           type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
@@ -271,7 +272,7 @@ export class GlassesDisplay {
           if (generation !== this.generation) return;
           this.stop("G2 updates stopped");
           this.onStatus(
-            `G2 updates stopped. Please reconnect. ${error instanceof Error ? error.message : ""}`,
+            message("G2 updates stopped. Please reconnect. {0}", errorMessage(error)),
           );
         },
       );
@@ -280,7 +281,7 @@ export class GlassesDisplay {
     } catch (error) {
       if (generation !== this.generation) return;
       this.active = false;
-      this.onStatus(error instanceof Error ? error.message : String(error));
+      this.onStatus(errorMessage(error));
       throw error;
     }
   }
@@ -381,11 +382,11 @@ export class GlassesDisplay {
       if (failure) {
         // One rejected tile must not end the session and head tracking. A
         // second failure in a row still does, so a dead link is not hidden.
-        this.onStatus(`Retrying a sky-map tile. ${failure}`);
+        this.onStatus(message("Retrying a sky-map tile. {0}", failure));
         failure = await this.sendTile(bridge, i, imageData);
         if (!this.canSend(generation, frame.foregroundRevision)) return;
       }
-      if (failure) throw new Error(failure);
+      if (failure) throw new MessageError(failure);
       cachedPixels[i] = pixels;
     }
     // This acknowledgement confirms acceptance by the host, not optical delivery.
@@ -400,7 +401,7 @@ export class GlassesDisplay {
     bridge: EvenAppBridge,
     index: number,
     imageData: Uint8Array,
-  ): Promise<string | null> {
+  ): Promise<Message | null> {
     try {
       const result = await bridge.updateImageRawData(
         new ImageRawDataUpdate({
@@ -411,9 +412,9 @@ export class GlassesDisplay {
       );
       return result === ImageRawDataUpdateResult.success
         ? null
-        : `Could not send the sky map (${result}).`;
+        : message("Could not send the sky map ({0}).", String(result));
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return errorMessage(error);
     }
   }
   stop(cause = "G2 session stopped"): void {

@@ -12,6 +12,7 @@ Set your viewing direction manually, then look up/down to follow head elevation 
 
 ## Features
 
+- **Four interface languages:** English (default), Japanese, Korean, and Simplified Chinese. Choose **Language** in the top bar; your choice is saved on this device when browser storage is available. Switching updates the interface, G2 captions, direction labels, and Sun/Moon/planet names without resetting the observing time, location, or head calibration. Star catalog proper names retain their international spelling. Dates still use your device's time zone; diagnostic JSON and source license documents remain in English.
 - **Now, Tonight, or Custom:** follow the current sky or explore a selected date. Tonight chooses 30 minutes after astronomical dusk, or the current time if it is already dark, and explains polar-day fallbacks.
 - **Your observing location:** use location permission or enter latitude and longitude. A reported GPS altitude outside −500 to 10,000 m is clamped instead of rejecting the fix. Date input and display use your **device's time zone**, including when you choose coordinates in another country.
 - **An offline sky catalog:** 2,865 stars, constellation lines, the Moon, Sun, Mercury, Venus, Mars, Jupiter, and Saturn. Objects below the horizon are hidden.
@@ -123,6 +124,7 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 ## How it works
 
 - `src/main.ts`: observing state, input events, sky updates, and G2 connection coordination.
+- `src/i18n.ts` and `src/locales.ts`: saved language selection, cached date formatters, and Japanese/Korean/Simplified Chinese translations. Messages retain their English source and numbered placeholders until presentation so existing status messages can be translated again on a language change.
 - `src/view.ts`: browser display, visible-object cards, and shared captions for the preview and G2.
 - `src/sky.ts`: Astronomy Engine calculations, HYG J2000 proper motion, precession and nutation, horizontal coordinates, great-circle constellation lines, and perspective projection.
 - `src/compass.ts`: magnetic declination and conversion of manually entered headings to true north.

@@ -1,4 +1,5 @@
 import { element, text } from "./dom.ts";
+import { errorMessage, message, t, type Message } from "./i18n.ts";
 import {
   HeadTracker,
   MOTION_TIMEOUT_MS,
@@ -42,7 +43,7 @@ export class HeadControls {
   private rejectedCount = 0;
   private ignoredCount = 0;
   private referencePose: HeadReference | null = null;
-  private status =
+  private status: Message =
     "Start the G2 sensor, then calibrate while wearing your glasses.";
   constructor(
     private glasses: GlassesDisplay,
@@ -76,12 +77,12 @@ export class HeadControls {
   get glassesHint(): string | undefined {
     if (!this.enabled || this.active) return;
     if (performance.now() - this.tracker.lastSampleAt > MOTION_TIMEOUT_MS)
-      return "Waiting for G2 sensor readings\nCheck the sensor status on your phone.\nCalibration needs live readings.";
+      return t("Waiting for G2 sensor readings\nCheck the sensor status on your phone.\nCalibration needs live readings.");
     if (this.captureFailed)
-      return "Pose not captured\nHold still and try the tap again.\nCheck the phone for calibration details.";
+      return t("Pose not captured\nHold still and try the tap again.\nCheck the phone for calibration details.");
     if (this.tracker.phase === "up")
-      return "Head setup: look up 20–40°\nKeep your head level sideways.\nHold still; tap to capture.";
-    return "Set your direction reference\nFace the selected heading and elevation.\nHold still; tap to set the reference.";
+      return t("Head setup: look up 20–40°\nKeep your head level sideways.\nHold still; tap to capture.");
+    return t("Set your direction reference\nFace the selected heading and elevation.\nHold still; tap to set the reference.");
   }
 
   captureNext(): void {
@@ -156,8 +157,10 @@ export class HeadControls {
     } catch (error) {
       if (generation !== this.generation) return;
       this.enabled = false;
-      this.status = error instanceof Error ? error.message : String(error);
-      this.note(performance.now(), "sensor-start-failed", { message: this.status });
+      this.status = errorMessage(error);
+      this.note(performance.now(), "sensor-start-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       await this.glasses.setMotionEnabled(false).catch(() => {});
     } finally {
       if (generation === this.generation) {
@@ -175,7 +178,7 @@ export class HeadControls {
     try {
       await this.glasses.setMotionEnabled(false);
     } catch (error) {
-      this.status = `Tracking stopped locally. ${String(error)}`;
+      this.status = message("Tracking stopped locally. {0}", errorMessage(error));
       this.refresh(performance.now(), true);
     }
   }
@@ -231,7 +234,10 @@ export class HeadControls {
     text("head-state", this.active ? "Tracking" : !this.enabled ? "Off"
       : !fresh ? "Waiting for sensor" : "Calibrating / paused");
     text("head-reference", this.referencePose
-      ? `${this.tracker.phase === "neutral" ? "Previous reference (paused)" : "Calibration reference"}: ${Math.round(this.referencePose.heading)}° ${this.referencePose.northReference} north · elevation ${Math.round(this.referencePose.pitch)}°`
+      ? message("{0}: {1}° {2} north · elevation {3}°",
+        this.tracker.phase === "neutral" ? "Previous reference (paused)" : "Calibration reference",
+        Math.round(this.referencePose.heading), this.referencePose.northReference,
+        Math.round(this.referencePose.pitch))
       : "No reference set. Face the selected heading and elevation.");
     element<HTMLButtonElement>("head-start").disabled =
       this.enabled || this.busy;
@@ -247,22 +253,22 @@ export class HeadControls {
     const recent = this.samples.filter((s) => now - s.time <= 2000);
     const span = recent.length > 1 ? recent.at(-1)!.time - recent[0]!.time : 0;
     const hz = span > 0 ? ((recent.length - 1) * 1000) / span : 0;
-    text("head-sample-rate", `${hz.toFixed(1)} samples/s`);
+    text("head-sample-rate", message("{0} samples/s", hz.toFixed(1)));
     text(
       "head-sample-age",
       last
-        ? `${Math.round(now - last.time)} ms since reading`
+        ? message("{0} ms since reading", Math.round(now - last.time))
         : "Waiting for readings",
     );
     text(
       "head-transfer",
       this.transferMs == null
         ? "No frame sent yet"
-        : `${Math.round(this.transferMs)} ms host transfer`,
+        : message("{0} ms host transfer", Math.round(this.transferMs)),
     );
     text(
       "head-received",
-      `${this.receivedCount} sensor messages · ${this.rejectedCount} unusable · ${this.ignoredCount} ignored as acceleration`,
+      message("{0} sensor messages · {1} unusable · {2} ignored as acceleration", this.receivedCount, this.rejectedCount, this.ignoredCount),
     );
     text(
       "head-raw",
@@ -322,7 +328,7 @@ export class HeadControls {
       if (this.captures.length > CAPTURE_LIMIT) this.captures.shift();
     } catch (error) {
       this.captureFailed = true;
-      this.status = error instanceof Error ? error.message : String(error);
+      this.status = errorMessage(error);
       this.note(now, "capture-failed", { step, message: this.status, recent });
     }
     this.refresh(now, true);
@@ -369,7 +375,7 @@ export class HeadControls {
       const file = new File([json], filename, { type: "application/json" });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         try {
-          await navigator.share({ files: [file], title: "G2 sensor log" });
+          await navigator.share({ files: [file], title: t("G2 sensor log") });
           text("head-log-status", "Sensor log shared. A copy is also available below.");
           return;
         } catch (error) {

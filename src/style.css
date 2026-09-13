@@ -94,6 +94,20 @@ p {
   letter-spacing: 3px;
   font-weight: 600;
 }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.language-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.language-control select {
+  max-width: 145px;
+}
 .brand-mark {
   font-size: 31px;
   color: var(--green);
@@ -658,7 +672,15 @@ input[type="datetime-local"] {
     padding: 0 18px;
   }
   .topbar {
-    height: 76px;
+    height: auto;
+    min-height: 76px;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 0;
+  }
+  .topbar-actions {
+    flex-wrap: wrap;
+    gap: 12px;
   }
   .brand-sub {
     display: block;

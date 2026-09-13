@@ -15,7 +15,7 @@ Tap to switch Now / Tonight, swipe to change the manual heading, and double-tap 
 LOCAL SKY CALCULATIONS
 A bundled catalog includes 2,865 stars, constellation lines, the Sun, Moon, Mercury, Venus, Mars, Jupiter and Saturn. Sky calculations run locally. The app does not upload your observing location.
 
-Requires Even Realities G2 and Even app 2.2.10 or later. The interface is in English. Phone compass availability depends on your device and the Even app. The display is a sky map, not an optically aligned overlay of real stars. Store images are rendered previews; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
+Requires Even Realities G2 and Even app 2.2.10 or later. Choose English (default), Japanese, Korean, or Simplified Chinese in the interface. Phone compass availability depends on your device and the Even app. The display is a sky map, not an optically aligned overlay of real stars. Store images are rendered previews; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
 
 Open-source code, credits and support:
 https://github.com/kuma0128/planetarium-even-g2

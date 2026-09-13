@@ -1,4 +1,5 @@
 import { element, text } from "./dom.ts";
+import { formatSkyTime, getLanguage, t } from "./i18n.ts";
 import { MAP_HEIGHT, renderCaptions, renderSky, type DisplayOptions, type RenderOptions } from "./render.ts";
 import {
   direction,
@@ -26,15 +27,6 @@ const timeLabels: Record<TimeMode, string> = {
   tonight: "Tonight",
   custom: "Custom",
 };
-// Date.toLocaleString builds a formatter on every call; renders run at up to 10 Hz.
-const timeFormat = new Intl.DateTimeFormat("en-GB", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZoneName: "short",
-});
 
 export function renderView(
   canvas: HTMLCanvasElement,
@@ -59,24 +51,25 @@ export function renderView(
     .filter((object) => object.name && object.kind !== "sun")
     .sort((a, b) => a.magnitude - b.magnitude)
     .slice(0, 8);
-  const modeLabel = timeLabels[timeMode];
-  const brightness = skyBrightness(sky.sunAltitude);
+  const modeLabel = t(timeLabels[timeMode]);
+  const brightness = t(skyBrightness(sky.sunAltitude));
   const headingLabel =
     heading == null
-      ? "Check north reference"
-      : `${direction(heading)} ${Math.round(heading) % 360}°`;
-  const timeLabel = timeFormat.format(time);
+      ? t("Check north reference")
+      : `${t(direction(heading))} ${Math.round(heading) % 360}°`;
+  const timeLabel = formatSkyTime(time);
   const header = display.showInfo
-    ? `${modeLabel} ${timeLabel}\n${location ? "" : "Tokyo demo / "}${headingLabel}  Alt ${Math.round(options.pitch)}°  ${headingSource}`
+    ? t("{0} {1}\n{2}{3}  Alt {4}°  {5}", modeLabel, timeLabel,
+      location ? "" : "Tokyo demo / ", headingLabel, Math.round(options.pitch), headingSource)
     : "";
   const footer =
     state.footerOverride ??
-    (display.showInfo ? `${brightness}\n${
+    (display.showInfo ? t("{0}\n{1}\nMoon illuminated: {2}%", brightness,
       targets
         .slice(0, 2)
-        .map((object) => `${object.name} ${Math.round(object.altitude)}°`)
-        .join(" / ") || "Try a different heading or elevation"
-    }\nMoon illuminated: ${Math.round(sky.moonFraction * 100)}%` : "");
+        .map((object) => `${t(object.name)} ${Math.round(object.altitude)}°`)
+        .join(" / ") || "Try a different heading or elevation",
+      Math.round(sky.moonFraction * 100)) : "");
   renderCaptions(canvas, header, footer);
   text("lens-header", header);
   text("lens-footer", footer);
@@ -97,7 +90,7 @@ export function renderView(
     "declination-label",
     declination == null
       ? "Magnetic correction is unavailable here at the current date. Use a true-north compass and select True north."
-      : `Current declination: ${declination.toFixed(1)}°. Added to magnetic headings to align with true north. Select True north if your compass already applies this correction.`,
+      : t("Current declination: {0}°. Added to magnetic headings to align with true north. Select True north if your compass already applies this correction.", declination.toFixed(1)),
   );
   text(
     "location-label",
@@ -108,7 +101,7 @@ export function renderView(
   text("light-label", brightness);
   text(
     "object-count",
-    `${visible.length} objects · Brightest named objects below`,
+    t("{0} objects · Brightest named objects below", visible.length),
   );
   renderObjects(targets);
   return { header, footer };
@@ -117,12 +110,14 @@ export function renderView(
 let renderedObjects = "";
 function renderObjects(targets: SkyObject[]): void {
   const rows = targets.map((object): [string, string] => [
-    object.name,
-    `${direction(object.azimuth)} ${object.azimuth.toFixed(0)}° · Alt ${object.altitude.toFixed(0)}° · ${object.kind === "star" ? `mag ${object.magnitude.toFixed(1)}` : object.kind === "moon" ? "Moon" : "Planet"}`,
+    t(object.name),
+    t("{0} {1}° · Alt {2}° · {3}", direction(object.azimuth), object.azimuth.toFixed(0),
+      object.altitude.toFixed(0), object.kind === "star" ? t("mag {0}", object.magnitude.toFixed(1))
+        : object.kind === "moon" ? "Moon" : "Planet"),
   ]);
   // Renders run at up to 10 Hz during head tracking. Rebuild the cards only
   // when their visible text changes instead of on every frame.
-  const key = JSON.stringify(rows);
+  const key = JSON.stringify([getLanguage(), rows]);
   if (key === renderedObjects) return;
   renderedObjects = key;
   const list = element("objects");
@@ -145,7 +140,7 @@ function renderObjects(targets: SkyObject[]): void {
     const empty = document.createElement("p");
     empty.className = "empty";
     empty.textContent =
-      "No bright named objects in this view. Change the heading or elevation to explore.";
+      t("No bright named objects in this view. Change the heading or elevation to explore.");
     list.append(empty);
   }
 }
