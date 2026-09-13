@@ -1,6 +1,6 @@
 {
   "name": "planetarium-even-g2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@evenrealities/evenhub-cli": "0.1.14",
+    "@evenrealities/evenhub-simulator": "0.9.5",
     "@playwright/test": "1.63.0",
     "@types/node": "25.9.5",
     "typescript": "5.9.3",

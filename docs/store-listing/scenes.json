@@ -14,16 +14,14 @@
       "height": 0
     },
     "heading": 151,
-    "pitch": 55,
-    "header": "",
-    "footer": ""
+    "pitch": 55
   },
   {
     "file": "02-summer-stars.png",
     "time": "2026-08-15T12:00:00Z",
     "target": "Altair",
     "pitchOffset": 6,
-    "fov": 110,
+    "fov": 120,
     "fullSky": true,
     "showInfo": false,
     "labels": true,
@@ -33,9 +31,7 @@
       "height": 0
     },
     "heading": 150,
-    "pitch": 66,
-    "header": "",
-    "footer": ""
+    "pitch": 66
   },
   {
     "file": "03-moon-and-planets.png",
@@ -52,8 +48,6 @@
       "height": 0
     },
     "heading": 145,
-    "pitch": 44,
-    "header": "Custom 25 Sept 2026, 21:00 GMT+9\nSE 145°  Alt 44°  Manual",
-    "footer": "Night sky\nMoon 44° / Saturn 34°\nMoon illuminated: 98%"
+    "pitch": 44
   }
 ]

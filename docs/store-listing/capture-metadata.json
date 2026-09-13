@@ -1,0 +1,24 @@
+{
+  "simulatorVersion": "0.9.5",
+  "capturedAt": "2026-09-10T04:32:14.513Z",
+  "source": "Official simulator /api/screenshot/glasses; original RGBA PNG, unmodified",
+  "fixture": "capture.html + production calculateSky, renderView and GlassesDisplay",
+  "files": [
+    {
+      "file": "00-startup.png",
+      "sha256": "a03e57aa7647bf6e0526441eadbe97a7efac3b64b7c66ad64f9253c0456ec119"
+    },
+    {
+      "file": "01-winter-stars.png",
+      "sha256": "f496670e4875f9342f7d2de508e79683124a5fc620cf31b510bffa48033994e3"
+    },
+    {
+      "file": "02-summer-stars.png",
+      "sha256": "b00ee65b97ed9dc58aa6662be4528668c69574bc4ff1dec9876cca527f4581b7"
+    },
+    {
+      "file": "03-moon-and-planets.png",
+      "sha256": "fb69aa60c7d686c36700ec45912bd088339d0a90ee4b78e9852152ed625aa190"
+    }
+  ]
+}

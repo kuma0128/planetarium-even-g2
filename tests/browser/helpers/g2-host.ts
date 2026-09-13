@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 
 type Sample = { x: number; y: number; z: number };
 type Host = {
-  calls: { method: string; data?: Record<string, unknown> }[];
+  calls: { at: number; method: string; data?: Record<string, unknown> }[];
   imageDelay: number;
   imageInFlight: number;
   maxImageInFlight: number;
@@ -21,6 +21,10 @@ type Host = {
   startupInFlight: number;
   maxStartupInFlight: number;
   releaseStartup: () => void;
+  blockRebuild: boolean;
+  rebuildInFlight: number;
+  maxRebuildInFlight: number;
+  releaseRebuild: () => void;
   deviceInfo: { model: string; sn: string } | null;
   failDeviceInfo: boolean;
   blockDeviceInfo: boolean;
@@ -71,6 +75,10 @@ export async function host(
       startupInFlight: 0,
       maxStartupInFlight: 0,
       releaseStartup: () => {},
+      blockRebuild: false,
+      rebuildInFlight: 0,
+      maxRebuildInFlight: 0,
+      releaseRebuild: () => {},
       deviceInfo: { model: "g2", sn: "test-g2" },
       failDeviceInfo: false,
       blockDeviceInfo: false,
@@ -115,6 +123,7 @@ export async function host(
         callHandler: async (_name: string, raw: string) => {
           const { method, data } = JSON.parse(raw);
           state.calls.push({
+            at: performance.now(),
             method,
             data:
               method === "updateImageRawData"
@@ -132,6 +141,17 @@ export async function host(
               return result;
             } finally {
               state.startupInFlight--;
+            }
+          }
+          if (method === "rebuildPageContainer") {
+            state.rebuildInFlight++;
+            state.maxRebuildInFlight = Math.max(state.maxRebuildInFlight, state.rebuildInFlight);
+            try {
+              if (state.blockRebuild)
+                await new Promise<void>(resolve => { state.releaseRebuild = resolve; });
+              return true;
+            } finally {
+              state.rebuildInFlight--;
             }
           }
           if (method === "getGlassesInfo") {

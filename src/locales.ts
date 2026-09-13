@@ -7,6 +7,8 @@ export const translations: Record<string, readonly [string, string, string]> = {
   "The G2 motion sensor did not respond in time. Reconnect G2 or reopen the app.": ["G2 モーションセンサーの応答がタイムアウトしました。G2 に再接続するか、アプリを開き直してください。", "G2 동작 센서 응답 시간이 초과되었습니다. G2에 다시 연결하거나 앱을 다시 여세요.", "G2 运动传感器响应超时。请重新连接 G2 或重新打开应用。"],
   "The Even app did not finish creating the G2 display in time. Check the connection, then retry Connect G2 or reopen the app.": ["G2 の表示作成がタイムアウトしました。接続を確認して再接続するか、アプリを開き直してください。", "G2 화면 생성 시간이 초과되었습니다. 연결을 확인한 뒤 G2 연결을 다시 시도하거나 앱을 다시 여세요.", "创建 G2 显示超时。请检查连接后重试连接 G2，或重新打开应用。"],
   "Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.": ["G2 の表示を作成できませんでした（{0}）。Even Hub から開き、グラスの接続を確認してください。", "G2 화면을 생성할 수 없습니다({0}). Even Hub에서 앱을 열고 안경 연결을 확인하세요.", "无法创建 G2 显示（{0}）。请通过 Even Hub 打开应用并检查眼镜连接。"],
+  "The Even app did not finish preparing the G2 sky map in time. Reconnect G2 or reopen the app.": ["G2 の星図ページの準備がタイムアウトしました。G2 に再接続するか、アプリを開き直してください。", "G2 별자리 지도 페이지 준비 시간이 초과되었습니다. G2에 다시 연결하거나 앱을 다시 여세요.", "准备 G2 星图页面超时。请重新连接 G2 或重新打开应用。"],
+  "Could not prepare the G2 sky map.": ["G2 の星図ページを準備できませんでした。", "G2 별자리 지도 페이지를 준비할 수 없습니다.", "无法准备 G2 星图页面。"],
   "Could not send the sky map ({0}).": ["星図を送信できませんでした（{0}）。", "별자리 지도를 전송할 수 없습니다({0}).", "无法发送星图（{0}）。"],
   "Could not create the sky-map image.": ["星図の画像を作成できませんでした。", "별자리 지도 이미지를 만들 수 없습니다.", "无法创建星图图像。"],
   "Waiting for G2 sensor readings\nCheck the sensor status on your phone.\nCalibration needs live readings.": ["G2 センサーの測定値を待機中\nスマートフォンで状態を確認\n調整にはライブ測定が必要です", "G2 센서 측정값 대기 중\n휴대폰에서 센서 상태를 확인하세요\n보정에는 실시간 측정값이 필요합니다", "等待 G2 传感器读数\n请在手机上查看传感器状态\n校准需要实时读数"],

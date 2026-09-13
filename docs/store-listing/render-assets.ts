@@ -3,13 +3,14 @@
 // Uses the app's complete frame renderer. These are rendered previews, not
 // captures of the physical optical display.
 import { createRequire } from "node:module";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { calculateSky } from "../../src/sky.ts";
 import { renderView } from "../../src/view.ts";
 
 const require = createRequire(new URL("../../artifacts/store-tools/package.json", import.meta.url));
 const { createCanvas } = require("@napi-rs/canvas");
-const out = new URL("./", import.meta.url);
+const out = new URL("../../artifacts/rendered-previews/", import.meta.url);
+mkdirSync(out, { recursive: true });
 const nodes = new Map();
 const makeNode = () => ({ textContent: "", style: {}, replaceChildren() {}, append() {} });
 // A small DOM sink lets renderView produce the same captions as the app.
@@ -24,7 +25,7 @@ globalThis.document = {
 const location = { latitude: 35.6762, longitude: 139.6503, height: 0 };
 const scenes = [
   { file: "01-winter-stars.png", time: "2026-01-15T12:00:00Z", target: "Betelgeuse", pitchOffset: -4, fov: 100, fullSky: true, showInfo: false, labels: false },
-  { file: "02-summer-stars.png", time: "2026-08-15T12:00:00Z", target: "Altair", pitchOffset: 6, fov: 110, fullSky: true, showInfo: false, labels: true },
+  { file: "02-summer-stars.png", time: "2026-08-15T12:00:00Z", target: "Altair", pitchOffset: 6, fov: 120, fullSky: true, showInfo: false, labels: true },
   { file: "03-moon-and-planets.png", time: "2026-09-25T12:00:00Z", target: "Moon", pitchOffset: 0, fov: 100, fullSky: false, showInfo: true, labels: true },
 ];
 const manifest = [];

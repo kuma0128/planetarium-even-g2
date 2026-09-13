@@ -10,7 +10,7 @@ test("Full-display mode starts without text and delivers the entire 576 x 288 fr
   await page.locator("#location-form button").click();
   await expectDeliveredFrame(page);
   expect(await page.evaluate(() => window.__g2Test.drawnText)).toEqual([]);
-  const layout = await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "createStartUpPageContainer")!.data);
+  const layout = await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "rebuildPageContainer")!.data);
   expect(layout?.containerTotalNum).toBe(5);
   expect(layout?.textObject).toEqual([
     expect.objectContaining({ containerID: 1, content: "", isEventCapture: 1, zOrderIndex: 0 }),
@@ -84,7 +84,7 @@ test("Compact and full-display views replace all pixels without rebuilding the G
   await page.locator("#full-sky").check();
   await expectDeliveredFrame(page);
   expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
-  expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "rebuildPageContainer"))).toBe(false);
+  expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "rebuildPageContainer").length)).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "artifacts/full-planetarium-mobile.png", fullPage: true });
 });
@@ -258,4 +258,35 @@ test("Mobile browser preview keeps manual controls and reports that no native ho
   await expect(page.locator("#head-state")).toHaveText("Off");
   await expect(page.locator("#head-start")).toBeEnabled();
   expect(errors).toEqual([]);
+});
+
+test("OS startup text stays visible without a location and precedes the first sky frame", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  const startup = await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "createStartUpPageContainer")!);
+  expect(startup.data?.containerTotalNum).toBe(1);
+  expect(startup.data?.imageObject).toBeUndefined();
+  expect(startup.data?.textObject).toEqual([expect.objectContaining({
+    content: "G2 Planetarium started.\nPlease continue on your phone.\nSet your observing location to display the sky.",
+    isEventCapture: 1,
+  })]);
+  expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "rebuildPageContainer" || call.method === "updateImageRawData"))).toBe(false);
+  await page.locator("#location-form button").click();
+  await expectDeliveredFrame(page);
+  const rebuilt = await page.evaluate(() => window.__g2Test.calls.find(call => call.method === "rebuildPageContainer")!);
+  expect(rebuilt.at - startup.at).toBeGreaterThanOrEqual(1500);
+});
+
+test("Exit during the startup message cancels the queued transition to the sky", async ({ page }) => {
+  await host(page);
+  await page.goto("/");
+  await page.locator("#location-form button").click();
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("evenHubEvent", {
+    detail: { sysEvent: { eventType: 7 } },
+  })));
+  await expect(page.locator("#bridge-status")).toHaveText("G2 display closed.");
+  await page.waitForTimeout(1700);
+  expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "rebuildPageContainer" || call.method === "updateImageRawData"))).toBe(false);
 });

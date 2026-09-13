@@ -9,6 +9,7 @@ import {
   ImageRawDataUpdateResult,
   ImuReportPace,
   OsEventTypeList,
+  RebuildPageContainer,
   StartUpPageCreateResult,
   TextContainerProperty,
   waitForEvenAppBridge,
@@ -87,6 +88,8 @@ export class GlassesDisplay {
   private creatingPage: Promise<void> = Promise.resolve();
   private transferringImage: Promise<void> = Promise.resolve();
   private bridgeRequest: Promise<EvenAppBridge> | null = null;
+  private skyPageReady = false;
+  private startupVisibleUntil = 0;
   private active = false;
   private inForeground = false;
   private foregroundRevision = 0;
@@ -134,6 +137,7 @@ export class GlassesDisplay {
       if (generation !== this.generation) return;
       this.bridge = bridge;
       this.pixels = [];
+      this.skyPageReady = false;
       // Subscribe before asking the host to create the page. An exit or a
       // disconnect can arrive while its acknowledgement is still pending.
       // Assume foreground only until an event supplies the actual state.
@@ -219,7 +223,7 @@ export class GlassesDisplay {
       });
       const creation = bridge.createStartUpPageContainer(
         new CreateStartUpPageContainer({
-          containerTotalNum: 5,
+          containerTotalNum: 1,
           textObject: [
             new TextContainerProperty({
               containerID: 1,
@@ -228,26 +232,13 @@ export class GlassesDisplay {
               yPosition: 0,
               width: MAP_WIDTH,
               height: DISPLAY_HEIGHT,
-              content: "",
+              content: "G2 Planetarium started.\nPlease continue on your phone.\nSet your observing location to display the sky.",
               borderWidth: 0,
-              paddingLength: 0,
+              paddingLength: 16,
               isEventCapture: 1,
               zOrderIndex: 0,
             }),
           ],
-          // The four front tiles cover the blank event container completely.
-          // Gestures still use its single isEventCapture target.
-          imageObject: Array.from({ length: 4 }, (_, i) =>
-            new ImageContainerProperty({
-              containerID: 2 + i,
-              containerName: `sky-tile-${i}`,
-              xPosition: (i % 2) * TILE_WIDTH,
-              yPosition: Math.floor(i / 2) * TILE_HEIGHT,
-              width: TILE_WIDTH,
-              height: TILE_HEIGHT,
-              zOrderIndex: i + 1,
-            }),
-          ),
         }),
       );
       // Retain the native operation after a timeout so retries cannot overlap it.
@@ -262,6 +253,7 @@ export class GlassesDisplay {
         throw new MessageError(
           message("Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.", String(result)),
         );
+      this.startupVisibleUntil = performance.now() + 1500;
       this.motion = new MotionStream((enabled) =>
         bridge.imuControl(enabled, ImuReportPace.P100),
       );
@@ -386,6 +378,57 @@ export class GlassesDisplay {
   }
   private async send(frame: QueuedFrame, generation: number): Promise<void> {
     const bridge = this.bridge!;
+    if (!this.skyPageReady) {
+      // Give the OS-rendered startup text time to paint, even with a location
+      // already selected. With no observing location it remains on screen.
+      const remaining = this.startupVisibleUntil - performance.now();
+      if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
+      if (!this.canSend(generation, frame.foregroundRevision)) return;
+      const rebuild = bridge.rebuildPageContainer(new RebuildPageContainer({
+        containerTotalNum: 5,
+        textObject: [
+          new TextContainerProperty({
+            containerID: 1,
+            containerName: "sky-events",
+            xPosition: 0,
+            yPosition: 0,
+            width: MAP_WIDTH,
+            height: DISPLAY_HEIGHT,
+            content: "",
+            borderWidth: 0,
+            paddingLength: 0,
+            isEventCapture: 1,
+            zOrderIndex: 0,
+          }),
+        ],
+        // The four front tiles cover the blank event container completely.
+        // Gestures still use its single isEventCapture target.
+        imageObject: Array.from({ length: 4 }, (_, i) =>
+          new ImageContainerProperty({
+            containerID: 2 + i,
+            containerName: `sky-tile-${i}`,
+            xPosition: (i % 2) * TILE_WIDTH,
+            yPosition: Math.floor(i / 2) * TILE_HEIGHT,
+            width: TILE_WIDTH,
+            height: TILE_HEIGHT,
+            zOrderIndex: i + 1,
+          }),
+        ),
+      }));
+      // Like page creation, a rebuild cannot be cancelled: keep it so a
+      // reconnect drains it, and stop the session if the host never answers.
+      this.creatingPage = rebuild.then(() => {}, () => {});
+      const rebuilt = await this.waitForNative(
+        rebuild,
+        generation,
+        "G2 page rebuild timed out",
+        "The Even app did not finish preparing the G2 sky map in time. Reconnect G2 or reopen the app.",
+      );
+      if (generation !== this.generation) return;
+      if (!rebuilt) throw new Error("Could not prepare the G2 sky map.");
+      this.skyPageReady = true;
+      if (!this.canSend(generation, frame.foregroundRevision)) return;
+    }
     const refresh = this.refreshRequested;
     const force = refresh !== this.refreshSent;
     const cachedPixels = this.pixels;

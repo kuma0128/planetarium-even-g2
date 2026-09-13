@@ -64,9 +64,11 @@ This creates `g2-planetarium.ehpk`, an Even Hub app package. Successful [GitHub 
 
 The app connects automatically when it detects the Even Hub bridge. Use **Connect G2** to retry. Creating the G2 display times out after six seconds and restores the connection controls.
 
-Individual image transfers and sensor start/stop operations also time out after six seconds: the session stops, the controls recover, and a message asks you to reconnect or reopen the app. Live sensor readings cannot leave calibration stuck behind a missing start acknowledgement.
+The G2 page starts as an OS-rendered text message: *G2 Planetarium started. Please continue on your phone. Set your observing location to display the sky.* It stays on the glasses until you choose an observing location and is shown for at least 1.5 seconds. The first sky frame then rebuilds the page into the four image tiles.
 
-If a previous image transfer, sensor command, or page creation is still waiting for the host, reconnect reports this after four seconds and restores the button. Native calls cannot be cancelled, so a retry waits for the original calls and sensor cleanup to settle before creating another page. Late results cannot restore the timed-out session or overwrite its recovery message. Retry after the connection recovers, or reopen the app if the host remains unresponsive.
+Individual image transfers, the sky-page rebuild, and sensor start/stop operations also time out after six seconds: the session stops, the controls recover, and a message asks you to reconnect or reopen the app. Live sensor readings cannot leave calibration stuck behind a missing start acknowledgement.
+
+If a previous image transfer, sensor command, page creation, or page rebuild is still waiting for the host, reconnect reports this after four seconds and restores the button. Native calls cannot be cancelled, so a retry waits for the original calls and sensor cleanup to settle before creating another page. Late results cannot restore the timed-out session or overwrite its recovery message. Retry after the connection recovers, or reopen the app if the host remains unresponsive.
 
 A regular browser runs the preview. This repository does not include custom firmware, and the app has not been published to the public Even Hub store.
 
@@ -140,7 +142,7 @@ during slow transfers, and tap/swipe/exit gestures with an empty event container
 - `src/head-controls.ts`: live sensor controls, guided calibration, diagnostics, the session event log, and local log export.
 - `src/motion-stream.ts`: serializes sensor start/stop calls, including rapid stop and reconnect.
 - `src/render.ts`: a 576 × 288 pixel display frame, with a full-height or compact 144-pixel sky viewport and optional captions/labels. Symbol sizes help identify objects; they do not reproduce apparent diameters or the shape of the Moon's phase.
-- `src/glasses.ts`: four 288 × 144 PNG tiles cover the G2 display. A blank text container behind the images captures gestures without reserving a visible text area. Every tile is sent sequentially through the official SDK; unchanged tiles are skipped, and a tile the host rejects is retried once before the session stops. Switching display options does not rebuild the page or interrupt head tracking.
+- `src/glasses.ts`: the startup page is a single OS text container with the start message. The first sky frame rebuilds it into four 288 × 144 PNG tiles that cover the G2 display, with a blank text container behind the images that captures gestures without reserving a visible text area. Every tile is sent sequentially through the official SDK; unchanged tiles are skipped, and a tile the host rejects is retried once before the session stops. Switching display options does not rebuild the page or interrupt head tracking.
 - `src/frame-queue.ts`: keeps only the latest pending frame while a send is in progress. A host acknowledgment is treated as acceptance of the update, not proof of optical rendering.
 
 The map is an enlarged view of the sky, not an optically calibrated AR overlay. Buildings, terrain, weather, and light pollution are not modeled. Head tracking changes the map's viewing direction; matching the optical display's field of view, gaze offset, and real stars would require additional calibration and hardware validation.

@@ -119,3 +119,42 @@ test("A rejected startup removes lifecycle listeners before retrying", async ({ 
   await page.locator("#connect").click();
   await expectDeliveredFrame(page);
 });
+
+test("A stalled sky-page rebuild times out, is drained before reconnecting, and can be retried", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await host(page);
+  await page.goto("/");
+  await expect(page.locator("#bridge-status")).toHaveText("Connected to G2.");
+  await page.evaluate(() => { window.__g2Test.blockRebuild = true; });
+  await page.locator("#location-form button").click();
+  await expect.poll(() => page.evaluate(() => window.__g2Test.rebuildInFlight)).toBe(1);
+  await expect(page.locator("#bridge-status")).toContainText("did not finish preparing", { timeout: 8000 });
+  await expect(page.locator("#connect")).toBeEnabled();
+  await expect(page.locator("#preview-status")).toContainText("Connect G2");
+  await expect(page.locator("#refresh-display")).toBeDisabled();
+  await page.locator("#language").selectOption("ja");
+  await expect(page.locator("#bridge-status")).toContainText("タイムアウト");
+  await page.locator("#language").selectOption("en");
+
+  // Timeout releases the UI, but cannot cancel the native rebuild.
+  await page.locator("#connect").click();
+  await expect(page.locator("#bridge-status")).toContainText("previous G2 session", { timeout: 6000 });
+  await expect(page.locator("#connect")).toBeEnabled();
+  expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
+  expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "updateImageRawData"))).toBe(false);
+  await page.evaluate(() => {
+    window.__g2Test.blockRebuild = false;
+    window.__g2Test.releaseRebuild();
+  });
+  await expect.poll(() => page.evaluate(() => window.__g2Test.rebuildInFlight)).toBe(0);
+  await expect(page.locator("#bridge-status")).toContainText("previous G2 session");
+  expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "updateImageRawData"))).toBe(false);
+
+  await page.locator("#connect").click();
+  await expectDeliveredFrame(page);
+  expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(2);
+  expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "rebuildPageContainer").length)).toBe(2);
+  expect(await page.evaluate(() => window.__g2Test.maxRebuildInFlight)).toBe(1);
+  expect(errors).toEqual([]);
+});

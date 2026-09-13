@@ -2,7 +2,7 @@
   "package_id": "io.github.kuma0128.planetarium",
   "edition": "202601",
   "name": "G2 Planetarium",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entrypoint": "index.html",
   "permissions": [
     {
@@ -11,6 +11,9 @@
     }
   ],
   "supported_languages": [
-    "en"
+    "en",
+    "ja",
+    "ko",
+    "zh"
   ]
 }

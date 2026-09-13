@@ -7,15 +7,15 @@ PLAN YOUR VIEW
 Switch between Now, Tonight and a custom date. Use your current location or enter coordinates. Adjust the elevation, field of view, star brightness limit and constellation lines.
 
 FIND YOUR DIRECTION
-Align the map with a manual compass reading or a supported phone compass. Choose magnetic or true north. Named objects show their direction and elevation, with a Moon illumination readout.
+Enter the heading you are facing from a compass app or a known landmark; the app does not use your phone's orientation sensors. Choose magnetic or true north. Named objects show their direction and elevation, with a Moon illumination readout.
 
 EXPLORE ON G2
-Tap to switch Now / Tonight, swipe to change the manual heading, and double-tap to open the exit dialog. Experimental head tracking can follow upward and downward movement after two-pose calibration. This feature is still awaiting physical-device validation; sensor support and performance may vary.
+Tap to switch Now / Tonight, scroll the temple touchpad or R1 ring to browse left/right by 15°, and double-tap to open the exit dialog. Experimental head tracking can follow upward and downward movement after two-pose calibration. This feature is still awaiting physical-device validation; sensor support and performance may vary.
 
 LOCAL SKY CALCULATIONS
 A bundled catalog includes 2,865 stars, constellation lines, the Sun, Moon, Mercury, Venus, Mars, Jupiter and Saturn. Sky calculations run locally. The app does not upload your observing location.
 
-Requires Even Realities G2 and Even app 2.2.10 or later. Choose English (default), Japanese, Korean, or Simplified Chinese in the interface. Phone compass availability depends on your device and the Even app. The display is a sky map, not an optically aligned overlay of real stars. Store images are rendered previews; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
+Requires Even Realities G2 and Even app 2.2.10 or later. Choose English (default), Japanese, Korean, or Simplified Chinese in the interface. The display is a sky map, not an optically aligned overlay of real stars. Store images are captured with the Even Hub simulator; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
 
 Open-source code, credits and support:
 https://github.com/kuma0128/planetarium-even-g2
