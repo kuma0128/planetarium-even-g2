@@ -3,6 +3,8 @@
  * Numbered placeholders preserve values and can be reordered by translators.
  */
 export const translations: Record<string, readonly [string, string, string]> = {
+  "The G2 image transfer did not finish in time. Reconnect G2 or reopen the app.": ["G2 への画像転送がタイムアウトしました。G2 に再接続するか、アプリを開き直してください。", "G2 이미지 전송 시간이 초과되었습니다. G2에 다시 연결하거나 앱을 다시 여세요.", "G2 图像传输超时。请重新连接 G2 或重新打开应用。"],
+  "The G2 motion sensor did not respond in time. Reconnect G2 or reopen the app.": ["G2 モーションセンサーの応答がタイムアウトしました。G2 に再接続するか、アプリを開き直してください。", "G2 동작 센서 응답 시간이 초과되었습니다. G2에 다시 연결하거나 앱을 다시 여세요.", "G2 运动传感器响应超时。请重新连接 G2 或重新打开应用。"],
   "The Even app did not finish creating the G2 display in time. Check the connection, then retry Connect G2 or reopen the app.": ["G2 の表示作成がタイムアウトしました。接続を確認して再接続するか、アプリを開き直してください。", "G2 화면 생성 시간이 초과되었습니다. 연결을 확인한 뒤 G2 연결을 다시 시도하거나 앱을 다시 여세요.", "创建 G2 显示超时。请检查连接后重试连接 G2，或重新打开应用。"],
   "Could not create the G2 display ({0}). Open this app through Even Hub and check the glasses connection.": ["G2 の表示を作成できませんでした（{0}）。Even Hub から開き、グラスの接続を確認してください。", "G2 화면을 생성할 수 없습니다({0}). Even Hub에서 앱을 열고 안경 연결을 확인하세요.", "无法创建 G2 显示（{0}）。请通过 Even Hub 打开应用并检查眼镜连接。"],
   "Could not send the sky map ({0}).": ["星図を送信できませんでした（{0}）。", "별자리 지도를 전송할 수 없습니다({0}).", "无法发送星图（{0}）。"],

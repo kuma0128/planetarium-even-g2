@@ -76,7 +76,7 @@ const glasses = new GlassesDisplay(
       requestRender();
     },
     onMotion: (sample, receivedAt) => head.receive(sample, receivedAt),
-    onMotionStopped: (cause) => head.disconnected(undefined, cause),
+    onMotionStopped: (cause, status) => head.disconnected(status, cause),
     onFrameSent: (duration) => head.frameSent(duration),
   },
 );

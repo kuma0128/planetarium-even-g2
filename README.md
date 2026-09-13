@@ -62,7 +62,13 @@ This creates `g2-planetarium.ehpk`, an Even Hub app package. Successful [GitHub 
 - **Local development:** follow the [official local-testing instructions](https://hub.evenrealities.com/docs/test/local-testing). Generate a development QR code with `npx evenhub qr --url http://YOUR_COMPUTER_IP:5173` and open it through the Even app's developer tools.
 - **Package testing:** upload the `.ehpk` for Private Testing in the Even Hub developer portal, then launch it from the Even app. See the [official packaging guide](https://hub.evenrealities.com/docs/ship/packaging).
 
-The app connects automatically when it detects the Even Hub bridge. Use **Connect G2** to retry. Creating the G2 display times out after six seconds and restores the connection controls. If a previous image transfer, sensor stop, or page creation is still waiting for the host, reconnect reports this after four seconds and restores the button. Native calls cannot be cancelled, so a retry waits for the previous call to settle before creating another page. Retry after the connection recovers, or reopen the app if the host remains unresponsive. A regular browser runs the preview. This repository does not include custom firmware, and the app has not been published to the public Even Hub store.
+The app connects automatically when it detects the Even Hub bridge. Use **Connect G2** to retry. Creating the G2 display times out after six seconds and restores the connection controls.
+
+Individual image transfers and sensor start/stop operations also time out after six seconds: the session stops, the controls recover, and a message asks you to reconnect or reopen the app. Live sensor readings cannot leave calibration stuck behind a missing start acknowledgement.
+
+If a previous image transfer, sensor command, or page creation is still waiting for the host, reconnect reports this after four seconds and restores the button. Native calls cannot be cancelled, so a retry waits for the original calls and sensor cleanup to settle before creating another page. Late results cannot restore the timed-out session or overwrite its recovery message. Retry after the connection recovers, or reopen the app if the host remains unresponsive.
+
+A regular browser runs the preview. This repository does not include custom firmware, and the app has not been published to the public Even Hub store.
 
 Image updates pause between G2 foreground exit and re-entry. Returning to the foreground resends the complete current view without reconnecting; head tracking requires calibration again. Transfers already waiting for the host at exit cannot be cancelled, but their late results do not close the resumed session.
 

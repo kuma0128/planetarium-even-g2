@@ -12,6 +12,10 @@ type Host = {
   failMotionStop: boolean;
   blockImages: boolean;
   blockMotionStop: boolean;
+  blockMotionStart: boolean;
+  releaseMotionStart: () => void;
+  motionInFlight: number;
+  maxMotionInFlight: number;
   blockStartup: boolean;
   startupResult: 0 | 1 | "throw";
   startupInFlight: number;
@@ -58,6 +62,10 @@ export async function host(
       failMotionStop: false,
       blockImages: false,
       blockMotionStop: false,
+      blockMotionStart: false,
+      releaseMotionStart: () => {},
+      motionInFlight: 0,
+      maxMotionInFlight: 0,
       blockStartup: false,
       startupResult: 0,
       startupInFlight: 0,
@@ -141,12 +149,21 @@ export async function host(
               : null;
           }
           if (method === "imuControl") {
-            if (state.failMotion && data.iMUReportEn === 1) return false;
-            if (state.failMotionStop && data.iMUReportEn === 0) return false;
-            if (state.blockMotionStop && data.iMUReportEn === 0)
-              await new Promise<void>(resolve => { state.releaseMotionStop = resolve; });
-            state.motion = data.iMUReportEn === 1;
-            return true;
+            const enabled = data.iMUReportEn === 1;
+            const failed = enabled ? state.failMotion : state.failMotionStop;
+            state.motionInFlight++;
+            state.maxMotionInFlight = Math.max(state.maxMotionInFlight, state.motionInFlight);
+            try {
+              if (state.blockMotionStart && enabled)
+                await new Promise<void>(resolve => { state.releaseMotionStart = resolve; });
+              if (state.blockMotionStop && !enabled)
+                await new Promise<void>(resolve => { state.releaseMotionStop = resolve; });
+              if (failed) return false;
+              state.motion = enabled;
+              return true;
+            } finally {
+              state.motionInFlight--;
+            }
           }
           if (method === "updateImageRawData") {
             const failure = state.nextImageFailure;

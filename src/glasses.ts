@@ -29,13 +29,15 @@ function createCanvas(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
+class TimeoutError extends Error {}
+
 async function withTimeout<T>(operation: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), ms);
+        timer = setTimeout(() => reject(new TimeoutError(message)), ms);
       }),
     ]);
   } finally {
@@ -65,7 +67,7 @@ export type GlassesHooks = {
   onConnected?: () => void;
   onForeground?: () => void;
   onMotion?: (sample: unknown, receivedAt: number) => void;
-  onMotionStopped?: (cause: string) => void;
+  onMotionStopped?: (cause: string, status?: Message) => void;
   onFrameSent?: (durationMs: number) => void;
 };
 export class GlassesDisplay {
@@ -83,6 +85,7 @@ export class GlassesDisplay {
   private refreshSent = 0;
   private connecting: Promise<void> | null = null;
   private creatingPage: Promise<void> = Promise.resolve();
+  private transferringImage: Promise<void> = Promise.resolve();
   private bridgeRequest: Promise<EvenAppBridge> | null = null;
   private active = false;
   private inForeground = false;
@@ -118,7 +121,7 @@ export class GlassesDisplay {
       this.queue?.stop();
       this.closeMotion();
       await withTimeout(
-        Promise.all([this.queue?.idle(), this.closingMotion, this.creatingPage]),
+        Promise.all([this.queue?.idle(), this.transferringImage, this.closingMotion, this.creatingPage]),
         4000,
         "The previous G2 session is still waiting for the Even app. Check the connection, then retry Connect G2 or reopen the app.",
       );
@@ -327,7 +330,20 @@ export class GlassesDisplay {
     }
     if (enabled && !this.inForeground)
       throw new Error("Return to the G2 foreground before starting its motion sensor.");
-    await this.motion.setEnabled(enabled);
+    const generation = this.generation;
+    try {
+      // Time out the caller, not MotionStream's native command chain. Its close
+      // still drains the original start/stop before a new session can open.
+      await this.waitForNative(
+        this.motion.setEnabled(enabled),
+        generation,
+        "G2 sensor command timed out",
+        "The G2 motion sensor did not respond in time. Reconnect G2 or reopen the app.",
+      );
+    } catch (error) {
+      // A stopped session's late rejection must not replace a newer UI status.
+      if (generation === this.generation) throw error;
+    }
   }
   async location(): Promise<Location | null> {
     if (!this.bridge) return null;
@@ -399,13 +415,13 @@ export class GlassesDisplay {
         continue;
       const imageData = await pngBytes(tile);
       if (!this.canSend(generation, frame.foregroundRevision)) return;
-      let failure = await this.sendTile(bridge, i, imageData);
+      let failure = await this.sendTile(bridge, i, imageData, generation);
       if (!this.canSend(generation, frame.foregroundRevision)) return;
       if (failure) {
         // One rejected tile must not end the session and head tracking. A
         // second failure in a row still does, so a dead link is not hidden.
         this.onStatus(message("Retrying a sky-map tile. {0}", failure));
-        failure = await this.sendTile(bridge, i, imageData);
+        failure = await this.sendTile(bridge, i, imageData, generation);
         if (!this.canSend(generation, frame.foregroundRevision)) return;
       }
       if (failure) throw new MessageError(failure);
@@ -423,14 +439,24 @@ export class GlassesDisplay {
     bridge: EvenAppBridge,
     index: number,
     imageData: Uint8Array,
+    generation: number,
   ): Promise<Message | null> {
     try {
-      const result = await bridge.updateImageRawData(
+      const transfer = bridge.updateImageRawData(
         new ImageRawDataUpdate({
           containerID: 2 + index,
           containerName: `sky-tile-${index}`,
           imageData,
         }),
+      );
+      // The queue can finish on timeout, but the native call cannot be cancelled.
+      // Keep it separately so reconnect never overlaps an unfinished transfer.
+      this.transferringImage = transfer.then(() => {}, () => {});
+      const result = await this.waitForNative(
+        transfer,
+        generation,
+        "G2 image transfer timed out",
+        "The G2 image transfer did not finish in time. Reconnect G2 or reopen the app.",
       );
       return result === ImageRawDataUpdateResult.success
         ? null
@@ -439,7 +465,25 @@ export class GlassesDisplay {
       return errorMessage(error);
     }
   }
-  stop(cause = "G2 session stopped"): void {
+  private async waitForNative<T>(
+    operation: Promise<T>,
+    generation: number,
+    cause: string,
+    status: string,
+  ): Promise<T> {
+    try {
+      return await withTimeout(operation, 6000, status);
+    } catch (error) {
+      if (error instanceof TimeoutError && generation === this.generation) {
+        // A pending native call blocks resumed foreground updates too. Its
+        // deadline belongs to the session, not the frame's foreground revision.
+        this.stop(cause, status);
+        this.onStatus(status);
+      }
+      throw error;
+    }
+  }
+  stop(cause = "G2 session stopped", status?: Message): void {
     this.generation++;
     this.active = false;
     this.inForeground = false;
@@ -449,7 +493,7 @@ export class GlassesDisplay {
     this.unsubscribeDevice?.();
     this.unsubscribeDevice = null;
     this.closeMotion();
-    this.hooks.onMotionStopped?.(cause);
+    this.hooks.onMotionStopped?.(cause, status);
   }
   private closeMotion(): void {
     if (this.motion) {

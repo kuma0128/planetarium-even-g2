@@ -175,16 +175,18 @@ export class HeadControls {
     this.disconnected(
       "Head tracking stopped. Using the last viewing direction.",
     );
+    const generation = this.generation;
     try {
       await this.glasses.setMotionEnabled(false);
     } catch (error) {
+      if (generation !== this.generation) return;
       this.status = message("Tracking stopped locally. {0}", errorMessage(error));
       this.refresh(performance.now(), true);
     }
   }
 
   disconnected(
-    message = "Motion session ended. Start the sensor and calibrate again.",
+    message: Message = "Motion session ended. Start the sensor and calibrate again.",
     cause = "Stop selected",
   ): void {
     if (!this.enabled && !this.busy) return;
