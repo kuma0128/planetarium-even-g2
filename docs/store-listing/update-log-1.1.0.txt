@@ -1,0 +1,63 @@
+G2 Planetarium 1.1.0 — Detailed update log
+Package ID: io.github.kuma0128.planetarium
+Previous submission: 1.0.1 (English-only submitted build)
+Current submission: 1.1.0
+
+Thank you for your feedback. This log details the multilingual update
+compared with the previously submitted English-only version 1.0.1.
+
+1. Added three interface languages
+- Added Japanese, Korean, and Simplified Chinese alongside English.
+- English remains the default language.
+- Added a Language selector in the phone interface so users can switch
+  languages without restarting the app.
+
+2. Translated the phone interface and G2 sky display
+- Localized interface controls, observing settings, connection status,
+  calibration instructions, and translatable error messages.
+- Localized sky captions, direction labels, and Sun, Moon, and planet
+  names in the phone preview and rendered G2 sky display.
+- Existing translatable status and error messages update when the user
+  changes language, without requiring the event to occur again.
+- Added locale-aware date formatting while retaining the device's time zone.
+
+3. Saved language preference and preserved observing state
+- The selected language is saved locally and restored on subsequent
+  visits when browser storage is available.
+- Language selection still works for the current visit if storage is
+  unavailable. Unsupported language preferences fall back to English.
+- Switching language preserves the observing location, selected time,
+  and head-tracking calibration without restarting the sensor session.
+
+4. Improved layout and text rendering for translated content
+- Adjusted interface layout and control styling for translated text.
+- Added caption wrapping for Japanese and Chinese text without spaces
+  and adapted canvas text sizing for translated sky labels.
+
+5. Updated application and listing metadata
+- Declared English, Japanese, Korean, and Chinese in the app manifest
+  (en, ja, ko, zh; the Chinese interface is Simplified Chinese).
+- Updated the project description and store listing to describe the
+  four available interface languages.
+- Corrected the store description to explain manual heading entry from
+  a separate compass app or landmark, without phone orientation sensors,
+  and the existing 15-degree temple-touchpad/R1-ring scrolling controls.
+- Set the application and project version to 1.1.0 and synchronized
+  the root package version entries in the dependency lockfile.
+
+6. Added automated coverage for multilingual behavior
+- Added unit coverage for English defaults, unsupported-language
+  fallback, translation placeholders, nested messages, and caption wrapping.
+- Added browser coverage for saved language preferences, retained
+  observing settings, mobile layout, translated guidance and errors,
+  and localized G2 frame delivery while head tracking remains active.
+- Browser tests use the real SDK with a mock native host; they do not
+  establish physical G2 display or sensor performance.
+
+Translation scope
+Star catalog proper names retain their international spelling. The
+OS-rendered startup message, diagnostic JSON, and source license documents
+remain in English. Unmapped messages fall back to their English source.
+
+This log is supplied in response to the September 14, 2026 review request
+for detailed changes and improvements.

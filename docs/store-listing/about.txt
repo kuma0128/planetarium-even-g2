@@ -1,21 +1,19 @@
-Explore the sky from your Even Realities G2. Choose your observing location and a time, then discover stars, constellations, the Moon and planets.
+Explore stars, constellations, the Moon and planets on Even Realities G2. Choose a location and Now, Tonight or a custom date. Adjust heading, elevation, field of view, star brightness, lines and labels; use a full-display or compact sky map. Calculations are local; location is not uploaded.
 
-YOUR SKY, YOUR DISPLAY
-Enjoy a full-display planetarium with text hidden by default. Switch to a compact map, or enable date and sky information and star/direction labels independently.
+Enter heading from a compass app or landmark; phone orientation sensors are not used. Tap for Now/Tonight, scroll the temple touchpad or R1 ring left/right by 15 degrees, or double-tap for the exit dialog. Experimental two-pose head tracking follows elevation.
 
-PLAN YOUR VIEW
-Switch between Now, Tonight and a custom date. Use your current location or enter coordinates. Adjust the elevation, field of view, star brightness limit and constellation lines.
+UPDATE LOG: 1.1.0 -> 1.1.1
+- Fixed exit cancellation: after selecting No, double-tap opens the exit dialog again. Sky updates resume without reconnecting.
+- Pause image transfers while the OS dialog/menu is open; restore controls on dismissal. Added repeated-cancel regression tests.
 
-FIND YOUR DIRECTION
-Enter the heading you are facing from a compass app or a known landmark; the app does not use your phone's orientation sensors. Choose magnetic or true north. Named objects show their direction and elevation, with a Moon illumination readout.
+1.0.1 (English-only) -> 1.1.0
+- Added Japanese, Korean and Simplified Chinese; English remains the default. Added a Language selector.
+- Translated controls, observing/connection status, calibration guidance, translatable errors, preview/G2 sky captions, direction labels and Sun/Moon/planet names. Existing messages update on language change.
+- Saved language choice locally when storage is available. Selection works without storage; invalid preferences fall back to English.
+- Language switching preserves observing location, time and head calibration without restarting the sensor.
+- Added localized dates (device time zone), layout adjustments, caption wrapping and text sizing for translated content.
+- Added unit/browser coverage for translations, saved preferences, mobile layout, retained calibration and localized G2 frames using a mock host.
 
-EXPLORE ON G2
-Tap to switch Now / Tonight, scroll the temple touchpad or R1 ring to browse left/right by 15°, and double-tap to open the exit dialog. Experimental head tracking can follow upward and downward movement after two-pose calibration. This feature is still awaiting physical-device validation; sensor support and performance may vary.
+Requires G2 and Even app 2.2.10+. Head-tracking accuracy and optical alignment remain unverified. Sky map, not an AR overlay. Images: simulator captures. Terrain, weather and light pollution are not modeled.
 
-LOCAL SKY CALCULATIONS
-A bundled catalog includes 2,865 stars, constellation lines, the Sun, Moon, Mercury, Venus, Mars, Jupiter and Saturn. Sky calculations run locally. The app does not upload your observing location.
-
-Requires Even Realities G2 and Even app 2.2.10 or later. Choose English (default), Japanese, Korean, or Simplified Chinese in the interface. The display is a sky map, not an optically aligned overlay of real stars. Store images are captured with the Even Hub simulator; actual G2 appearance may differ. Buildings, terrain, weather and light pollution are not modeled.
-
-Open-source code, credits and support:
-https://github.com/kuma0128/planetarium-even-g2
+Code, credits and support: https://github.com/kuma0128/planetarium-even-g2

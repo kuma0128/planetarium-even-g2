@@ -68,13 +68,13 @@ for (const event of ["disconnect", "exit", "abnormal-exit"] as const) {
   });
 }
 
-test("Foreground exit during startup keeps delivery and motion paused until re-entry", async ({ page }) => {
+test("OS overlay opening during startup keeps delivery and motion paused until re-entry", async ({ page }) => {
   await host(page, { blockStartup: true });
   await page.goto("/");
   await page.locator("#location-form button").click();
   await expect.poll(() => page.evaluate(() => window.__g2Test.startupInFlight)).toBe(1);
   await page.evaluate(() => {
-    window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType: 5 } } }));
+    window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType: 4 } } }));
     window.__g2Test.blockStartup = false;
     window.__g2Test.releaseStartup();
   });
@@ -83,7 +83,7 @@ test("Foreground exit during startup keeps delivery and motion paused until re-e
   await page.locator("#head-start").click();
   await expect(page.locator("#head-status")).toContainText("Return to the G2 foreground");
   expect(await page.evaluate(() => window.__g2Test.calls.some(call => call.method === "updateImageRawData" || (call.method === "imuControl" && call.data?.iMUReportEn === 1)))).toBe(false);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType: 4 } } })));
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType: 5 } } })));
   await expectDeliveredFrame(page);
   expect(await page.evaluate(() => window.__g2Test.calls.filter(call => call.method === "createStartUpPageContainer").length)).toBe(1);
 });
@@ -94,7 +94,7 @@ test("Foreground re-entry before startup completes is retained, but early gestur
   await page.locator("#location-form button").click();
   await expect.poll(() => page.evaluate(() => window.__g2Test.startupInFlight)).toBe(1);
   await page.evaluate(() => {
-    for (const eventType of [5, 4, 0, 1, 2, 3])
+    for (const eventType of [4, 5, 0, 1, 2, 3])
       window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType } } }));
     window.__g2Test.blockStartup = false;
     window.__g2Test.releaseStartup();

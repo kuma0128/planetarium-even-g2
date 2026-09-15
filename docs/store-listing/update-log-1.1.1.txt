@@ -1,0 +1,25 @@
+G2 Planetarium 1.1.1 — September 15, 2026
+Previous submission: 1.1.0
+
+Fixed the September 15 review issue: after double-tapping and choosing No,
+the next double-tap can open the exit dialog again without reconnecting.
+
+Changes:
+- Corrected OS overlay event handling: event 4 opens the overlay; event 5
+  dismisses it. Dismissal restores the app instead of leaving gestures disabled.
+- Pause image delivery before requesting the dialog and while an OS overlay
+  is open. Dismissal requests a complete current frame; stale transfer results
+  cannot close the resumed session.
+- System exit and disconnect still stop the app session. Head tracking stops
+  while covered and requires calibration again after returning.
+- Added regression tests for three consecutive No selections on both startup
+  and sky pages, continued taps and frame delivery, and a subsequent Yes exit.
+
+Reviewer check:
+1. Open G2 Planetarium. Double-tap, choose No, and double-tap again.
+2. Repeat cancellation three times. The dialog should open every time.
+3. Set an observing location on the phone and repeat on the sky map.
+4. After No, verify tap/scroll controls and sky updates; choose Yes to exit.
+
+Automated checks use the real SDK with a mock native host. Physical G2
+verification is not claimed.

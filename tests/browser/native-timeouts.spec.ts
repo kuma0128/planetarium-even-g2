@@ -23,7 +23,7 @@ for (const lateResult of ["success", "throw"] as const) {
     if (lateResult === "throw") {
       // Returning to the foreground cannot bypass a still-blocked transfer.
       await page.evaluate(() => {
-        for (const eventType of [5, 4])
+        for (const eventType of [4, 5])
           window.dispatchEvent(new CustomEvent("evenHubEvent", { detail: { sysEvent: { eventType } } }));
       });
     }

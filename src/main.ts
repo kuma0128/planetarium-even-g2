@@ -433,7 +433,7 @@ window.addEventListener("pagehide", () => {
   if (renderState.animation !== undefined) cancelAnimationFrame(renderState.animation);
   glasses.stop("Page hidden");
 });
-// Phone visibility is independent of G2's foreground. The SDK's foreground-exit,
+// Phone visibility is independent of G2's foreground. OS overlay opening,
 // disconnect and system-exit events still stop the sensor session.
 document.addEventListener("visibilitychange", requestRender);
 window.addEventListener("pageshow", (event) => {

@@ -150,8 +150,11 @@ export class GlassesDisplay {
             this.hooks.onMotion?.(event.sysEvent.imuData, performance.now());
           return;
         }
+        // These events describe the OS overlay, not our page: 4 opens
+        // the exit dialog/menu; 5 dismisses it (including selecting No).
+        // https://hub.evenrealities.com/docs/build/contextual-menu
         if (
-          event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT
+          event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT
         ) {
           this.inForeground = true;
           this.pixels = [];
@@ -161,16 +164,9 @@ export class GlassesDisplay {
           return;
         }
         if (
-          event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT
+          event.sysEvent?.eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT
         ) {
-          this.inForeground = false;
-          // Invalidate both the in-flight transfer and any waiting snapshot.
-          // Their late results must not stop or acknowledge the resumed session.
-          this.foregroundRevision++;
-          void this.setMotionEnabled(false).catch((error) =>
-            this.onStatus(errorMessage(error)),
-          );
-          this.hooks.onMotionStopped?.("G2 left the foreground");
+          this.pauseForOverlay();
           return;
         }
         // CLICK_EVENT is 0: do not discard it with a truthiness check.
@@ -193,11 +189,22 @@ export class GlassesDisplay {
         if (!this.foreground) return;
         if (type === OsEventTypeList.CLICK_EVENT) this.onGesture("tap");
         else if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-          void bridge
-            .shutDownPageContainer(1)
-            .catch((error) =>
-              this.onStatus(message("Could not open the exit dialog. {0}", errorMessage(error))),
-            );
+          // Pause before calling native: image transfers can fail as soon as
+          // the dialog opens, before its overlay event reaches JavaScript.
+          this.pauseForOverlay();
+          const revision = this.foregroundRevision;
+          void bridge.shutDownPageContainer(1).then((accepted) => {
+            if (!accepted) throw new Error("The Even app rejected the request.");
+            // This acknowledges opening the dialog, not the user's choice.
+            // Only overlay dismissal may resume the page.
+          }).catch((error) => {
+            if (generation !== this.generation || revision !== this.foregroundRevision) return;
+            this.inForeground = true;
+            this.pixels = [];
+            this.refreshRequested++;
+            this.hooks.onForeground?.();
+            this.onStatus(message("Could not open the exit dialog. {0}", errorMessage(error)));
+          });
         } else if (type === OsEventTypeList.SCROLL_TOP_EVENT)
           this.onGesture("left");
         else if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT)
@@ -301,6 +308,16 @@ export class GlassesDisplay {
       this.onStatus(errorMessage(error));
       throw error;
     }
+  }
+  private pauseForOverlay(): void {
+    if (!this.inForeground) return;
+    this.inForeground = false;
+    // Late in-flight frames cannot stop or acknowledge the resumed session.
+    this.foregroundRevision++;
+    void this.setMotionEnabled(false).catch((error) =>
+      this.onStatus(errorMessage(error)),
+    );
+    this.hooks.onMotionStopped?.("G2 left the foreground");
   }
   /**
    * The SDK's bridge wait registers a listener it never removes. Share one

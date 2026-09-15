@@ -21,7 +21,7 @@ for (const busy of [false, true]) {
     }
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent("evenHubEvent", {
-        detail: { sysEvent: { eventType: 5 } },
+        detail: { sysEvent: { eventType: 4 } },
       }));
       window.__g2Test.failImages = true;
       window.__g2Test.blockImages = false;
@@ -44,7 +44,7 @@ for (const busy of [false, true]) {
       window.__g2Test.failImages = false;
       window.__g2Test.images = {};
       window.dispatchEvent(new CustomEvent("evenHubEvent", {
-        detail: { sysEvent: { eventType: 4 } },
+        detail: { sysEvent: { eventType: 5 } },
       }));
     });
     await expectDeliveredFrame(page);
@@ -72,14 +72,14 @@ for (const failure of ["result", "throw"] as const) {
     await page.locator("#refresh-display").click();
     await expect.poll(() => page.evaluate(() => window.__g2Test.imageInFlight)).toBe(1);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("evenHubEvent", {
-      detail: { sysEvent: { eventType: 5 } },
+      detail: { sysEvent: { eventType: 4 } },
     })));
     await page.selectOption("#fov", "60");
     await expect(page.locator("#preview-status")).toContainText("background");
     await page.evaluate(() => {
       window.__g2Test.images = {};
       window.dispatchEvent(new CustomEvent("evenHubEvent", {
-        detail: { sysEvent: { eventType: 4 } },
+        detail: { sysEvent: { eventType: 5 } },
       }));
       window.__g2Test.blockImages = false;
       window.__g2Test.releaseImage();
@@ -178,7 +178,7 @@ for (const busy of [false, true]) {
     await page.evaluate(() => {
       window.__g2Test.images = {};
       window.dispatchEvent(new CustomEvent("evenHubEvent", {
-        detail: { sysEvent: { eventType: 4 } },
+        detail: { sysEvent: { eventType: 5 } },
       }));
       window.__g2Test.blockImages = false;
       window.__g2Test.releaseImage();
@@ -381,7 +381,7 @@ test("Leaving the G2 foreground stops its motion session", async ({ page }) => {
   await page.evaluate(() =>
     window.dispatchEvent(
       new CustomEvent("evenHubEvent", {
-        detail: { sysEvent: { eventType: 5 } },
+        detail: { sysEvent: { eventType: 4 } },
       }),
     ),
   );

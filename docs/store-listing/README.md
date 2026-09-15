@@ -5,10 +5,28 @@
 - Category: Education
 - Tags: Astronomy, Stargazing, Constellations, Planets, Sky map
 - About: [about.txt](about.txt)
+- Current fix: [update-log-1.1.1.txt](update-log-1.1.1.txt)
+- Previous detailed update log: [update-log-1.1.0.txt](update-log-1.1.0.txt)
 - Icon: [icon.png](icon.png), 24 × 24 pixels, black and white
 - Cover: winter-stars screenshot with the portal's Exterior / Nature background
 - Screenshots: `01`–`03`, full sky, labeled sky, and compact sky with information
 - Startup evidence: [00-startup.png](00-startup.png)
+
+The update log addresses the September 14, 2026 review request for a detailed
+list of changes and improvements. The developer confirmed that the previously
+submitted 1.0.1 build was English-only; the 1.1.0 submission adds multilingual
+support. The log uses that submitted-build baseline.
+
+Do not equate the submitted 1.0.1 package with repository commit `5666753`
+solely from its version number: that commit already contains translations.
+The exact source revision of the earlier submitted package is unverified.
+Startup, timeout, lifecycle, and screenshot changes are therefore not claimed
+as new relative to the submitted 1.0.1 build without further package evidence.
+
+The build-upload flow provides a 500-character Change log field. The About text
+also includes a condensed update log within its 2,000-character limit; the
+standalone logs retain the longer explanations. Keep these consistent when updating
+them. Version 1.1.1 uses both the build change log and the About update log.
 
 All four PNGs are original, unmodified 576 × 288 RGBA exports from the official
 Even Hub simulator 0.9.5 (latest npm release checked on 2026-09-10). Preserve their

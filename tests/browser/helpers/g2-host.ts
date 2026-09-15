@@ -6,6 +6,7 @@ type Host = {
   imageDelay: number;
   imageInFlight: number;
   maxImageInFlight: number;
+  shutdownResult: boolean | "throw";
   failImages: boolean;
   nextImageFailure: "result" | "throw" | null;
   failMotion: boolean;
@@ -60,6 +61,7 @@ export async function host(
       imageDelay: 80,
       imageInFlight: 0,
       maxImageInFlight: 0,
+      shutdownResult: true,
       failImages: false,
       nextImageFailure: null,
       failMotion: false,
@@ -153,6 +155,10 @@ export async function host(
             } finally {
               state.rebuildInFlight--;
             }
+          }
+          if (method === "shutDownPageContainer") {
+            if (state.shutdownResult === "throw") throw new Error("Dialog request failed");
+            return state.shutdownResult;
           }
           if (method === "getGlassesInfo") {
             if (state.failDeviceInfo) throw new Error("Device info unavailable");
